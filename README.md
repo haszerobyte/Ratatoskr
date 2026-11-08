@@ -392,8 +392,10 @@ answers:
    - **Ranking:** results are merged by URL and scored. Every engine that
      found a page gives it a vote, worth less the lower it ranked it. The
      page also earns points for each of the query's words in its title
-     (counted double), snippet and URL. A page whose snippet one engine left
-     empty gets another engine's.
+     (counted double), snippet and URL. Idea boards and short videos
+     (Pinterest, TikTok) score lower: engines rank them for nearly any query
+     and they seldom answer one. A page whose snippet one engine left empty
+     gets another engine's.
 2. **Your own search server** (`SEARCH_API_URL`), if configured.
 3. **Brave's and Google's APIs,** if keyed.
 4. **Wikipedia's full-text search.**
@@ -439,7 +441,10 @@ Some engines aren't used:
   - JSON, XML and plain text pass through;
   - a PDF's text is extracted, and its bytes are returned in `page.pdf`.
 - **Size caps:** 2 MB of body, 32 MB for a PDF, and 100,000 characters of
-  text. `truncated` says whether a cap was hit.
+  text. A longer page first loses its link URLs (each link keeps its text),
+  which often makes it fit, and the text says so; one still too long is cut
+  at a line, with a closing note saying the page goes on, and `truncated` is
+  set.
 - **Redirects:** followed up to 5, each one checked against the address
   rules.
 - **Retries:**

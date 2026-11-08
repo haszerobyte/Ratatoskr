@@ -134,6 +134,21 @@ fn coverage(hit: &Hit, terms: &[String]) -> f64 {
     (2.0 * share(&hit.title) + share(&hit.snippet) + share(&hit.url)) / 4.0
 }
 
+/// What a page from an idea-board or short-video site costs, in engine votes.
+/// They rank well on engines for nearly any query (a Pinterest board was the
+/// top answer for "height of mount everest") and seldom answer one; set
+/// against the comparison's useful results they were all six off-topic hits
+/// in a top five. Not a ban: one that is all a search finds still shows.
+const LOW_VALUE_PENALTY: f64 = 1.5;
+
+/// Pinterest (any country's) and TikTok: pages that point at answers or
+/// show them in a video a model cannot watch.
+fn is_low_value(hit: &Hit) -> bool {
+    let host = url::Url::parse(&hit.url).ok().and_then(|u| u.host_str().map(str::to_lowercase)).unwrap_or_default();
+    let host = host.trim_start_matches("www.");
+    host.split('.').any(|label| label == "pinterest") || host == "tiktok.com" || host.ends_with(".tiktok.com")
+}
+
 /// A wiki's category listing: a page of links to pages, never the answer.
 fn is_category_listing(hit: &Hit) -> bool {
     hit.url.contains("wikimedia.org") && (hit.title.contains("Category:") || hit.url.contains("Category:"))
@@ -179,7 +194,10 @@ pub fn fuse(lists: Vec<Vec<Hit>>, query: &str) -> Vec<Hit> {
     let mut scored: Vec<(f64, usize, Hit)> = entries
         .into_iter()
         .enumerate()
-        .map(|(order, e)| (e.votes + COVERAGE_WEIGHT * coverage(&e.hit, &terms), order, e.hit))
+        .map(|(order, e)| {
+            let penalty = if is_low_value(&e.hit) { LOW_VALUE_PENALTY } else { 0.0 };
+            (e.votes + COVERAGE_WEIGHT * coverage(&e.hit, &terms) - penalty, order, e.hit)
+        })
         .collect();
     scored.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
     scored.into_iter().map(|(_, _, hit)| hit).collect()
@@ -394,6 +412,23 @@ mod tests {
             ],
             "the full match first, the encyclopedia's half match next, the category listing dropped"
         );
+    }
+
+    /// Regression: a Pinterest board was the top result for "height of mount
+    /// everest", and idea boards and TikTok pages took six top-five places
+    /// in twenty-five searches.
+    #[test]
+    fn idea_boards_and_short_videos_rank_below_answers() {
+        let web = vec![
+            full("https://www.pinterest.com/pin/123/", "Height of Mount Everest", "everest height diagram"),
+            full("https://ru.pinterest.com/pin/9/", "Mount Everest height", "pins"),
+            full("https://www.tiktok.com/@x/video/1", "Mount Everest height explained", "everest"),
+            full("https://a.example/everest", "Mount Everest", "Its height is 8,849 m"),
+        ];
+        let ranked = urls(fuse(vec![web], "height of mount everest"));
+        assert_eq!(ranked[0], "https://a.example/everest", "the answer leads: {ranked:?}");
+        assert_eq!(ranked.len(), 4, "the boards and videos stay, below it");
+        assert!(!is_low_value(&full("https://notpinterest.example/", "", "")));
     }
 
     #[test]
