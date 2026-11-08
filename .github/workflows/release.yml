@@ -13,7 +13,7 @@ name: Release
 #      ghcr.io/haszerobyte/ratatoskr (<version>, and latest unless a pre-release).
 # Then it publishes ratatoskr-web to crates.io, tags that commit
 # v<version>, publishes a GitHub release with the binaries and their
-# SHA-256 checksums, and updates the MCP Registry entry (server.json).
+# SHA-256 checksums, and updates the MCP Registry entry (packaging/mcp/server.json).
 #
 # Needs the repository secret CARGO_REGISTRY_TOKEN: a crates.io API token
 # with the publish-new and publish-update scopes.
@@ -201,7 +201,7 @@ jobs:
             tar xzf "$RUNNER_TEMP/dist/ratatoskr-$TAG-$target.tar.gz" -C "$RUNNER_TEMP"
             cp "$RUNNER_TEMP/ratatoskr-$TAG-$target/ratatoskr" "$ctx/dist/$arch/"
           done
-          cp Dockerfile.release "$ctx/Dockerfile"
+          cp packaging/docker/Dockerfile.release "$ctx/Dockerfile"
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -264,7 +264,7 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
         run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
 
-  # The official MCP Registry entry (server.json), pointing at this version's
+  # The official MCP Registry entry (packaging/mcp/server.json), pointing at this version's
   # image. Its own job, after everything is published: a registry failure is
   # shown here and leaves the release itself complete. GitHub's OIDC token
   # proves the io.github.haszerobyte namespace; no secret is needed.
@@ -281,13 +281,17 @@ jobs:
         with:
           ref: ${{ needs.check.outputs.sha }}
       - name: server.json for this version
+        working-directory: packaging/mcp
         env:
           VERSION: ${{ inputs.version }}
         run: |
           jq --arg v "$VERSION" '.version = $v | .packages[0].identifier = "ghcr.io/haszerobyte/ratatoskr:" + $v' \
             server.json > server.json.new && mv server.json.new server.json && cat server.json
       - name: mcp-publisher
+        working-directory: packaging/mcp
         run: |
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" \
             | tar xz mcp-publisher
-      - run: ./mcp-publisher login github-oidc && ./mcp-publisher publish
+      - name: Publish to the MCP Registry
+        working-directory: packaging/mcp
+        run: ./mcp-publisher login github-oidc && ./mcp-publisher publish

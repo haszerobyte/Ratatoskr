@@ -1,7 +1,7 @@
 # The image the release workflow publishes to ghcr.io/haszerobyte/ratatoskr:
 # the release's own Linux binaries, already built and tested, one per
 # architecture (dist/amd64, dist/arm64 in the build context). Building from
-# source instead: Dockerfile.
+# source instead: packaging/docker/Dockerfile.
 
 FROM gcr.io/distroless/cc-debian12:nonroot
 ARG TARGETARCH

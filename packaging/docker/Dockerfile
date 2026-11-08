@@ -3,8 +3,9 @@
 # command (`docker run --rm ghcr.io/haszerobyte/ratatoskr search "tokio"`).
 #
 # The release workflow publishes the same image from its prebuilt binaries
-# (Dockerfile.release); this one is for building it yourself and for
-# directories that build a server from its repository.
+# (Dockerfile.release); this one is for building it yourself, from the
+# repository root: docker build -f packaging/docker/Dockerfile .
+# Dockerfile.dockerignore keeps build output and local secrets out of it.
 
 FROM rust:1-bookworm AS build
 # BoringSSL (through wreq) needs cmake and libclang to build.

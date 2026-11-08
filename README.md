@@ -96,7 +96,8 @@ messages up and down the world tree.
   It runs the MCP server on stdio by default, `docker run -i --rm
   ghcr.io/haszerobyte/ratatoskr`, or any command:
   `docker run --rm ghcr.io/haszerobyte/ratatoskr search "tokio select"`.
-  `Dockerfile` builds the same image from source.
+  `docker build -f packaging/docker/Dockerfile .` builds the same image from
+  source.
 
 **The library:** the package is `ratatoskr-web`, because the name `ratatoskr`
 was taken on crates.io. In code it's still `ratatoskr`.
@@ -572,7 +573,7 @@ The workflow runs these steps in order, stopping at the first failure:
 8. publishes `ratatoskr-web` to crates.io;
 9. tags the commit `v<version>` and publishes the drafted release;
 10. updates the [MCP Registry](https://registry.modelcontextprotocol.io)
-    entry from `server.json`, pointing at that version's image. This runs
+    entry from `packaging/mcp/server.json`, pointing at that version's image. This runs
     last, on its own: if it fails, the release is still complete.
 
 The first image push creates the `ratatoskr` package on GitHub as private:
