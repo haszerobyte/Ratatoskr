@@ -6,8 +6,9 @@
 //!   DuckDuckGo both serve Bing's), and no more once there are enough
 //!   results, so a search costs two engines a request rather than all of
 //!   them, and no engine sees every query;
-//! - results are de-duplicated by URL, those several engines found first,
-//!   then ranked by where the query's words appear.
+//! - results are merged by URL and scored: a vote from each engine that
+//!   found one, worth less the lower it ranked it, plus how much of the
+//!   query its title, snippet and URL answer ([`fuse`]).
 //!
 //! Each engine has its own circuit breaker, so one that refuses is left alone
 //! while the others carry on, and its own pace: searches made at the same time go first to the
@@ -79,54 +80,99 @@ pub(crate) fn url_key(url: &str) -> String {
     }
 }
 
-/// One hit per URL (the first seen), those more
-/// engines returned first, ties in the order they came.
-pub fn aggregate(lists: Vec<Vec<Hit>>) -> Vec<Hit> {
-    let mut order: Vec<(String, Hit)> = Vec::new();
-    let mut counts: HashMap<String, usize> = HashMap::new();
-    for hit in lists.into_iter().flatten() {
-        let key = url_key(&hit.url);
-        let count = counts.entry(key.clone()).or_insert(0);
-        if *count == 0 {
-            order.push((key, hit));
+/// How fast an engine's vote fades down its list: its first result counts 1,
+/// its sixth half that. Gentle, because engines disagree on order far more
+/// than on what is relevant.
+const POSITION_DAMPING: f64 = 5.0;
+
+/// What covering the whole query is worth, in engine votes: two, so a result
+/// one engine ranked low but that answers every word beats one an engine
+/// ranked first that answers none, while results several engines agree on
+/// still lead.
+const COVERAGE_WEIGHT: f64 = 2.0;
+
+/// Words too common to tell results apart.
+const COMMON_WORDS: &[&str] = &[
+    "the", "and", "for", "with", "from", "what", "how", "who", "why", "when", "where", "which", "are", "was", "were",
+    "this", "that", "into", "about",
+];
+
+/// The query's distinct words worth matching, lower-case: three letters or
+/// more, or any word with a digit (years, versions, scores like "2nd").
+fn query_terms(query: &str) -> Vec<String> {
+    let mut terms: Vec<String> = Vec::new();
+    for word in query.to_lowercase().split(|c: char| !c.is_alphanumeric()) {
+        let telling = word.chars().count() >= 3 || word.chars().any(|c| c.is_ascii_digit());
+        if telling && !COMMON_WORDS.contains(&word) && !terms.iter().any(|t| t == word) {
+            terms.push(word.to_string());
         }
-        *count += 1;
     }
-    let mut ranked: Vec<(usize, usize, Hit)> =
-        order.into_iter().enumerate().map(|(i, (key, hit))| (counts[&key], i, hit)).collect();
-    ranked.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
-    ranked.into_iter().map(|(_, _, hit)| hit).collect()
+    terms
 }
 
-/// Wikipedia pages first, then hits with a query
-/// word (three letters or more) in both title and snippet, in the title only,
-/// in the snippet only, then the rest; Wikimedia category pages dropped.
-pub fn rank(hits: Vec<Hit>, query: &str) -> Vec<Hit> {
-    let lower = query.to_lowercase();
-    let words: Vec<&str> =
-        lower.split(|c: char| !c.is_alphanumeric() && c != '_').filter(|w| w.chars().count() >= 3).collect();
-    let has_word = |text: &str| {
-        let text = text.to_lowercase();
-        words.iter().any(|w| text.contains(w))
-    };
-    let mut buckets: [Vec<Hit>; 5] = Default::default();
-    for hit in hits {
-        if hit.title.contains("Category:") && hit.title.contains("Wikimedia") {
-            continue;
-        }
-        let bucket = if hit.url.contains("wikipedia.org") {
-            0
-        } else {
-            match (has_word(&hit.title), has_word(&hit.snippet)) {
-                (true, true) => 1,
-                (true, false) => 2,
-                (false, true) => 3,
-                (false, false) => 4,
-            }
-        };
-        buckets[bucket].push(hit);
+/// How much of the query a hit answers, from 0 to 1: the share of its terms
+/// in the title counts double (a title is what a page is about), in the
+/// snippet and in the URL once each.
+fn coverage(hit: &Hit, terms: &[String]) -> f64 {
+    if terms.is_empty() {
+        return 0.0;
     }
-    buckets.into_iter().flatten().collect()
+    let share = |text: &str| {
+        let text = text.to_lowercase();
+        terms.iter().filter(|t| text.contains(t.as_str())).count() as f64 / terms.len() as f64
+    };
+    (2.0 * share(&hit.title) + share(&hit.snippet) + share(&hit.url)) / 4.0
+}
+
+/// A wiki's category listing: a page of links to pages, never the answer.
+fn is_category_listing(hit: &Hit) -> bool {
+    hit.url.contains("wikimedia.org") && (hit.title.contains("Category:") || hit.url.contains("Category:"))
+}
+
+/// The engines' answers as one list, best first. Each URL appears once and
+/// collects a vote from every engine that returned it, worth less the further
+/// down that engine's list it was; the votes plus how much of the query the
+/// hit answers make its score. Ties keep the order the answers came in. A
+/// duplicate's snippet fills in an empty one, so a page is not shown bare
+/// because the engine that answered first gave no summary.
+pub fn fuse(lists: Vec<Vec<Hit>>, query: &str) -> Vec<Hit> {
+    struct Entry {
+        hit: Hit,
+        votes: f64,
+    }
+    let terms = query_terms(query);
+    let mut entries: Vec<Entry> = Vec::new();
+    let mut by_key: HashMap<String, usize> = HashMap::new();
+    for list in lists {
+        let mut in_this_list = HashSet::new();
+        for (position, hit) in list.into_iter().enumerate() {
+            let key = url_key(&hit.url);
+            if is_category_listing(&hit) || !in_this_list.insert(key.clone()) {
+                continue;
+            }
+            let vote = POSITION_DAMPING / (POSITION_DAMPING + position as f64);
+            match by_key.get(&key) {
+                Some(&i) => {
+                    let entry = &mut entries[i];
+                    entry.votes += vote;
+                    if entry.hit.snippet.trim().is_empty() {
+                        entry.hit.snippet = hit.snippet;
+                    }
+                }
+                None => {
+                    by_key.insert(key, entries.len());
+                    entries.push(Entry { hit, votes: vote });
+                }
+            }
+        }
+    }
+    let mut scored: Vec<(f64, usize, Hit)> = entries
+        .into_iter()
+        .enumerate()
+        .map(|(order, e)| (e.votes + COVERAGE_WEIGHT * coverage(&e.hit, &terms), order, e.hit))
+        .collect();
+    scored.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+    scored.into_iter().map(|(_, _, hit)| hit).collect()
 }
 
 /// How many web engines to ask at once for `limit` results.
@@ -281,7 +327,7 @@ impl Engine for Meta {
                 }
             }
             if !answers.web_found.is_empty() {
-                let mut hits = rank(aggregate(std::mem::take(&mut answers.lists)), query);
+                let mut hits = fuse(std::mem::take(&mut answers.lists), query);
                 hits.truncate(limit);
                 return Ok(hits);
             }
@@ -306,45 +352,65 @@ mod tests {
         Hit { title: url.into(), url: url.into(), snippet: String::new() }
     }
 
+    fn full(url: &str, title: &str, snippet: &str) -> Hit {
+        Hit { title: title.into(), url: url.into(), snippet: snippet.into() }
+    }
+
+    fn urls(hits: Vec<Hit>) -> Vec<String> {
+        hits.into_iter().map(|h| h.url).collect()
+    }
+
     #[test]
-    fn aggregation_dedupes_and_puts_what_several_engines_found_first() {
+    fn pages_several_engines_found_lead_and_appear_once() {
+        // No query word matches, so only the votes decide: rust-lang.org is
+        // second and first (0.83 + 1), the book third twice (0.71 + 0.71),
+        // a.example first once (1), b.example second once (0.83).
         let yahoo =
             vec![hit("https://a.example/"), hit("https://rust-lang.org/"), hit("https://doc.rust-lang.org/book")];
         let yandex =
             vec![hit("https://www.rust-lang.org"), hit("https://b.example/x"), hit("https://doc.rust-lang.org/book/")];
-        let urls: Vec<String> = aggregate(vec![yahoo, yandex]).into_iter().map(|h| h.url).collect();
         assert_eq!(
-            urls,
+            urls(fuse(vec![yahoo, yandex], "zzz")),
             ["https://rust-lang.org/", "https://doc.rust-lang.org/book", "https://a.example/", "https://b.example/x"]
         );
     }
 
     #[test]
-    fn ranking_puts_wikipedia_then_query_words_first() {
-        let h = |url: &str, title: &str, snippet: &str| Hit {
-            title: title.into(),
-            url: url.into(),
-            snippet: snippet.into(),
-        };
-        let hits = vec![
-            h("https://n.example/", "Nothing", "else"),
-            h("https://s.example/", "Other", "about tokio"),
-            h("https://t.example/", "Tokio guide", "x"),
-            h("https://b.example/", "Tokio select", "the select macro"),
-            h("https://en.wikipedia.org/wiki/Tokio", "Tokio", ""),
-            h("https://commons.wikimedia.org/c", "Category:Tokio - Wikimedia Commons", ""),
+    fn answering_the_query_outranks_position() {
+        let web = vec![
+            full("https://n.example/", "Nothing", "else"),
+            full("https://s.example/", "Other", "about tokio"),
+            full("https://t.example/", "Tokio guide", "x"),
+            full("https://b.example/", "Tokio select", "the select macro"),
+            full("https://commons.wikimedia.org/c", "Category:Tokio - Wikimedia Commons", ""),
         ];
-        let urls: Vec<String> = rank(hits, "tokio select").into_iter().map(|h| h.url).collect();
+        let encyclopedia = vec![full("https://en.wikipedia.org/wiki/Tokio", "Tokio", "")];
         assert_eq!(
-            urls,
+            urls(fuse(vec![web, encyclopedia], "tokio select")),
             [
-                "https://en.wikipedia.org/wiki/Tokio",
                 "https://b.example/",
+                "https://en.wikipedia.org/wiki/Tokio",
                 "https://t.example/",
                 "https://s.example/",
                 "https://n.example/"
-            ]
+            ],
+            "the full match first, the encyclopedia's half match next, the category listing dropped"
         );
+    }
+
+    #[test]
+    fn a_duplicate_fills_in_a_missing_snippet() {
+        let first = vec![full("https://x.example/", "X", "")];
+        let second = vec![full("https://www.x.example", "X", "What x is.")];
+        let hits = fuse(vec![first, second], "x");
+        assert_eq!(hits.len(), 1);
+        assert_eq!((hits[0].url.as_str(), hits[0].snippet.as_str()), ("https://x.example/", "What x is."));
+    }
+
+    #[test]
+    fn query_terms_keep_numbers_and_drop_filler() {
+        assert_eq!(query_terms("India vs NZ 2nd ODI in 2026, the India"), ["india", "2nd", "odi", "2026"]);
+        assert!(query_terms("a of in").is_empty());
     }
 
     #[test]

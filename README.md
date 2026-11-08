@@ -334,9 +334,10 @@ Defaults (`Settings::default()`):
      and Yandex (its own index);
    - it stops once there are enough distinct results, so a typical search costs
      two web requests, not one per engine;
-   - results are de-duplicated by URL;
-   - those several engines found come first, then Wikipedia pages, then by
-     where the query's words appear (title and snippet, title, snippet).
+   - results are merged by URL and scored: each engine that found a page gives
+     it a vote, worth less the lower it ranked it, and the page earns more for
+     each of the query's words in its title (counted double), snippet and URL;
+   - a page whose summary one engine left empty gets another engine's.
 2. **An external search server** (`SEARCH_API_URL`), if configured.
 3. **Brave's and Google's APIs**, if keyed.
 4. **Wikipedia's full-text search.**
