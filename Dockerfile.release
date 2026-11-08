@@ -1,0 +1,14 @@
+# The image the release workflow publishes to ghcr.io/haszerobyte/ratatoskr:
+# the release's own Linux binaries, already built and tested, one per
+# architecture (dist/amd64, dist/arm64 in the build context). Building from
+# source instead: Dockerfile.
+
+FROM gcr.io/distroless/cc-debian12:nonroot
+ARG TARGETARCH
+COPY dist/${TARGETARCH}/ratatoskr /usr/local/bin/ratatoskr
+LABEL org.opencontainers.image.source="https://github.com/haszerobyte/Ratatoskr" \
+      org.opencontainers.image.description="Web search and page fetching for LLM agents: keyless meta-search, SSRF-safe fetch, MCP server" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      io.modelcontextprotocol.server.name="io.github.haszerobyte/ratatoskr"
+ENTRYPOINT ["/usr/local/bin/ratatoskr"]
+CMD ["mcp"]

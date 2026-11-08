@@ -92,6 +92,11 @@ messages up and down the world tree.
   it against `SHA256SUMS`.
 - **From crates.io:** `cargo install ratatoskr-web --locked`. This needs
   `cmake` and libclang; see [Building from source](#building-from-source).
+- **As a container** (Linux, amd64 and arm64): `ghcr.io/haszerobyte/ratatoskr`.
+  It runs the MCP server on stdio by default, `docker run -i --rm
+  ghcr.io/haszerobyte/ratatoskr`, or any command:
+  `docker run --rm ghcr.io/haszerobyte/ratatoskr search "tokio select"`.
+  `Dockerfile` builds the same image from source.
 
 **The library:** the package is `ratatoskr-web`, because the name `ratatoskr`
 was taken on crates.io. In code it's still `ratatoskr`.
@@ -559,10 +564,20 @@ The workflow runs these steps in order, stopping at the first failure:
 3. checks that the crate packages (`cargo publish --dry-run`);
 4. runs the full CI on that commit, on every platform;
 5. builds the binaries;
-6. drafts the GitHub release with them and their SHA-256 checksums, so a
-   GitHub-side failure stops it before anything is published;
-7. publishes `ratatoskr-web` to crates.io;
-8. tags the commit `v<version>` and publishes the drafted release.
+6. pushes the container image of the Linux binaries to
+   `ghcr.io/haszerobyte/ratatoskr` (`<version>`, and `latest` unless it's a
+   pre-release);
+7. drafts the GitHub release with the binaries and their SHA-256 checksums,
+   so a GitHub-side failure stops it before anything is published;
+8. publishes `ratatoskr-web` to crates.io;
+9. tags the commit `v<version>` and publishes the drafted release;
+10. updates the [MCP Registry](https://registry.modelcontextprotocol.io)
+    entry from `server.json`, pointing at that version's image. This runs
+    last, on its own: if it fails, the release is still complete.
+
+The first image push creates the `ratatoskr` package on GitHub as private:
+make it public once in its package settings, or `docker pull` and the
+registry entry won't work for anyone else.
 
 It needs these repository secrets:
 - **`CARGO_REGISTRY_TOKEN`** (required): a crates.io API token with the

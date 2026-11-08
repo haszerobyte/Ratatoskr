@@ -8,10 +8,12 @@ name: Release
 #      haszerobyte ("Release <version>"; no commit when they already say it);
 #   3. that commit packages (`cargo publish --dry-run`) and passes CI: fmt,
 #      clippy, and the tests on every platform;
-#   4. the `ratatoskr` command-line tool builds for every platform below.
+#   4. the `ratatoskr` command-line tool builds for every platform below;
+#   5. the container image of the Linux binaries is pushed to
+#      ghcr.io/haszerobyte/ratatoskr (<version>, and latest unless a pre-release).
 # Then it publishes ratatoskr-web to crates.io, tags that commit
-# v<version>, and publishes a GitHub release with the binaries and their
-# SHA-256 checksums.
+# v<version>, publishes a GitHub release with the binaries and their
+# SHA-256 checksums, and updates the MCP Registry entry (server.json).
 #
 # Needs the repository secret CARGO_REGISTRY_TOKEN: a crates.io API token
 # with the publish-new and publish-update scopes.
@@ -171,9 +173,56 @@ jobs:
           name: ${{ matrix.target }}
           path: ${{ env.ASSET }}
 
+  # The container image, from the Linux binaries just built and tested (no
+  # second compile): linux/amd64 and linux/arm64. Before the crates.io publish,
+  # so an image failure stops the release while nothing is out; a re-run
+  # pushes the same tags again.
+  image:
+    name: container image (ghcr.io)
+    needs: [check, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.check.outputs.sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/dist
+          merge-multiple: true
+      - name: The Linux binaries, by Docker architecture
+        run: |
+          ctx="$RUNNER_TEMP/image"
+          for pair in amd64:x86_64-unknown-linux-gnu arm64:aarch64-unknown-linux-gnu; do
+            arch=${pair%%:*}; target=${pair#*:}
+            mkdir -p "$ctx/dist/$arch"
+            tar xzf "$RUNNER_TEMP/dist/ratatoskr-$TAG-$target.tar.gz" -C "$RUNNER_TEMP"
+            cp "$RUNNER_TEMP/ratatoskr-$TAG-$target/ratatoskr" "$ctx/dist/$arch/"
+          done
+          cp Dockerfile.release "$ctx/Dockerfile"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ runner.temp }}/image
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/haszerobyte/ratatoskr:${{ inputs.version }}
+            ${{ !inputs.prerelease && 'ghcr.io/haszerobyte/ratatoskr:latest' || '' }}
+          labels: |
+            org.opencontainers.image.version=${{ inputs.version }}
+            org.opencontainers.image.revision=${{ needs.check.outputs.sha }}
+
   publish:
     name: publish to crates.io and GitHub
-    needs: [check, build]
+    needs: [check, build, image]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -214,3 +263,31 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
         run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+
+  # The official MCP Registry entry (server.json), pointing at this version's
+  # image. Its own job, after everything is published: a registry failure is
+  # shown here and leaves the release itself complete. GitHub's OIDC token
+  # proves the io.github.haszerobyte namespace; no secret is needed.
+  registry:
+    name: MCP Registry
+    needs: [check, publish]
+    if: ${{ !inputs.prerelease }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.check.outputs.sha }}
+      - name: server.json for this version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          jq --arg v "$VERSION" '.version = $v | .packages[0].identifier = "ghcr.io/haszerobyte/ratatoskr:" + $v' \
+            server.json > server.json.new && mv server.json.new server.json && cat server.json
+      - name: mcp-publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" \
+            | tar xz mcp-publisher
+      - run: ./mcp-publisher login github-oidc && ./mcp-publisher publish

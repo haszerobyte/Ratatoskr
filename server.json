@@ -1,0 +1,27 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.haszerobyte/ratatoskr",
+  "title": "Ratatoskr",
+  "description": "Keyless web search and page fetching for agents, as Markdown.",
+  "version": "0.0.0",
+  "repository": {
+    "url": "https://github.com/haszerobyte/Ratatoskr",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/haszerobyte/Ratatoskr",
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/haszerobyte/ratatoskr:0.0.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
+    }
+  ]
+}

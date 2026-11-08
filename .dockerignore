@@ -1,0 +1,7 @@
+# Never in an image: build output, history, local secrets.
+target/
+.git/
+.env
+.env.*
+bench/
+assets/
