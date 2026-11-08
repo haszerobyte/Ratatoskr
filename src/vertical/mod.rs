@@ -370,12 +370,15 @@ mod tests {
             assert!(used.contains(&"yahoo"), "{used:?}");
             assert_eq!(items.len(), 3, "b1 once: {items:?}");
         }
-        assert!(pool.status().iter().any(|(name, rest)| *name == "ddg" && rest.is_some()), "the refuser rests");
+        // Whether "ddg" was asked above depends on the health ordering: once
+        // "bing" answers for their shared provider, "ddg" need not be. So a
+        // refuser's rest is checked where it is the only source.
         let refusing = Pool::new(
             vec![Arc::new(Fake("ddg", "bing", Err(EngineError::Refused("challenge".into())))) as Arc<dyn Source<Item>>],
             Duration::from_secs(60),
             Duration::ZERO,
         );
         assert!(matches!(refusing.search(&SearchRequest::new("x", 5)).await, Err(EngineError::Refused(_))));
+        assert!(refusing.status().iter().any(|(name, rest)| *name == "ddg" && rest.is_some()), "the refuser rests");
     }
 }
