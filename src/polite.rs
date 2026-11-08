@@ -77,6 +77,87 @@ impl CircuitBreaker {
     }
 }
 
+/// How much one answer moves an engine's [`Health`]: recent answers count
+/// most, and three bad ones in a row bring a healthy engine below an
+/// untried one.
+const HEALTH_WEIGHT: f64 = 0.3;
+
+/// How an engine has been doing lately, as moving averages over its answers:
+/// how often it gave results, how long it took, and how many it gave.
+/// Searches ask the healthiest engines first, and as many as their usual
+/// yield says a search needs.
+pub struct Health(Mutex<HealthState>);
+
+#[derive(Clone, Copy)]
+struct HealthState {
+    /// 1 for results, 0.5 for an empty answer (a niche query, not a fault), 0 for a failure.
+    success: f64,
+    seconds: f64,
+    results: f64,
+}
+
+impl Default for Health {
+    /// An untried engine: assumed to work, at an ordinary speed and yield.
+    fn default() -> Self {
+        Self(Mutex::new(HealthState { success: 0.8, seconds: 1.5, results: 10.0 }))
+    }
+}
+
+impl Health {
+    /// Record one answer: `Some(n)` results, or `None` for a failure.
+    pub fn record(&self, results: Option<usize>, took: Duration) {
+        let mut state = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let toward = |old: f64, new: f64| old + HEALTH_WEIGHT * (new - old);
+        state.seconds = toward(state.seconds, took.as_secs_f64());
+        match results {
+            Some(0) => state.success = toward(state.success, 0.5),
+            Some(n) => {
+                state.success = toward(state.success, 1.0);
+                state.results = toward(state.results, n as f64);
+            }
+            None => state.success = toward(state.success, 0.0),
+        }
+    }
+
+    /// Higher is better: how often it answers, discounted by how slowly.
+    pub fn score(&self) -> f64 {
+        let state = *self.0.lock().unwrap_or_else(|e| e.into_inner());
+        state.success / (1.0 + state.seconds)
+    }
+
+    /// How many results an answer of its usually holds.
+    pub fn usual_yield(&self) -> f64 {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).results
+    }
+}
+
+/// `seats` in the order to ask them: those free now (or soonest) first, the
+/// healthiest first among equally free ones. Each score is scaled by a
+/// random 0.75 to 1.25, so engines of similar health share the searches and
+/// none sees every query.
+pub(crate) fn asking_order<S>(seats: Vec<S>, parts: impl Fn(&S) -> (&RateLimiter, &Health)) -> Vec<S> {
+    let mut keyed: Vec<(Duration, f64, S)> = seats
+        .into_iter()
+        .map(|seat| {
+            let (limiter, health) = parts(&seat);
+            let spread = 0.75 + (crate::engine::browser::random_u64() % 1000) as f64 / 2000.0;
+            let key = (limiter.ready_in(), health.score() * spread);
+            (key.0, key.1, seat)
+        })
+        .collect();
+    keyed.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.total_cmp(&a.1)));
+    keyed.into_iter().map(|(_, _, seat)| seat).collect()
+}
+
+/// How many engines to ask at once for `limit` results when one usually
+/// gives `usual_yield`: enough for a quarter more than the limit (answers
+/// overlap), and two when there are two, so one failing does not cost a
+/// second round trip.
+pub(crate) fn engines_needed(limit: usize, usual_yield: f64, providers: usize) -> usize {
+    let needed = (limit as f64 * 1.25 / usual_yield.max(1.0)).ceil() as usize;
+    needed.max(2).min(providers).max(1)
+}
+
 /// One cached answer: when, from which engine, what.
 type Entry<T> = (Instant, &'static str, T);
 /// The entries by key, and their keys oldest first.

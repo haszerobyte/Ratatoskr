@@ -329,9 +329,12 @@ Defaults (`Settings::default()`):
 1. **The meta-search:**
    - Wikipedia and Grokipedia each add the one article whose title matches the
      query, if there is one;
-   - the web engines are asked a few at a time, in a random order: Yahoo,
-     DuckDuckGo and Bing (all serve Bing's index, so one of them per search)
-     and Yandex (its own index);
+   - the web engines are Yahoo, DuckDuckGo and Bing (all serve Bing's index,
+     so one of them per search) and Yandex (its own index); each keeps a
+     running record of how often it answers, how fast and how many results it
+     gives, and they are asked healthiest first, with some randomness so no
+     engine sees every query, as many at once as their usual yield needs
+     (at least two, so one failing costs no extra round trip);
    - it stops once there are enough distinct results, so a typical search costs
      two web requests, not one per engine;
    - results are merged by URL and scored: each engine that found a page gives

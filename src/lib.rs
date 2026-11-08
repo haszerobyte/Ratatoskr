@@ -4,7 +4,7 @@
 //!
 //! [`Ratatoskr::search`] asks sources in order and returns the first useful
 //! answer: its own meta-search first (Wikipedia's and Grokipedia's best page,
-//! and Yahoo, DuckDuckGo, Bing and Yandex in a shuffled order, two at a time, each
+//! and Yahoo, DuckDuckGo, Bing and Yandex, healthiest first, two or more at a time, each
 //! search from a fresh browser, merged and ranked; see [`engine::meta`]),
 //! then an external search server if configured, Brave's and Google's
 //! official APIs when keyed,

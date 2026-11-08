@@ -2,9 +2,10 @@
 //!
 //! Each kind has its own typed result and its own [`Pool`] of sources. A pool
 //! works as the web meta-search does ([`crate::engine::meta`]):
-//! - the sources are asked in a random order, the ones free soonest first, a
-//!   few at a time, and one per result provider (DuckDuckGo's news and images
-//!   come from Bing's index, so Bing's own engine is not asked as well);
+//! - the sources are asked free-soonest and healthiest first, as many at
+//!   once as their usual yield says the limit needs, and one per result
+//!   provider (DuckDuckGo's news and images come from Bing's index, so Bing's
+//!   own engine is not asked as well);
 //! - it stops once there are enough results;
 //! - results are merged by key (the article's or image's URL) and interleaved,
 //!   so every source's best results come first;
@@ -19,13 +20,13 @@ use std::collections::HashSet;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures::future::join_all;
 
 use crate::engine::EngineError;
-use crate::engine::meta::{shuffled, url_key, workers};
-use crate::polite::{CircuitBreaker, RateLimiter};
+use crate::engine::meta::url_key;
+use crate::polite::{CircuitBreaker, Health, RateLimiter, asking_order, engines_needed};
 use crate::request::SearchRequest;
 
 /// A news article.
@@ -132,6 +133,7 @@ struct Seat<T> {
     source: Arc<dyn Source<T>>,
     breaker: CircuitBreaker,
     limiter: RateLimiter,
+    health: Health,
 }
 
 /// The sources of one kind of result, asked as described in the module docs.
@@ -142,8 +144,12 @@ pub struct Pool<T> {
 impl<T: Keyed + Clone + Send + 'static> Pool<T> {
     /// `interval` spaces the requests to each source; `cooldown` rests one that refused.
     pub fn new(sources: Vec<Arc<dyn Source<T>>>, cooldown: Duration, interval: Duration) -> Self {
-        let seat =
-            |source| Seat { source, breaker: CircuitBreaker::new(cooldown), limiter: RateLimiter::new(interval) };
+        let seat = |source| Seat {
+            source,
+            breaker: CircuitBreaker::new(cooldown),
+            limiter: RateLimiter::new(interval),
+            health: Health::default(),
+        };
         Self { seats: sources.into_iter().map(seat).collect() }
     }
 
@@ -154,13 +160,16 @@ impl<T: Keyed + Clone + Send + 'static> Pool<T> {
 
     /// Up to `request.limit` results, or why there are none.
     pub async fn search(&self, request: &SearchRequest) -> Result<(Vec<T>, Vec<&'static str>), EngineError> {
-        let mut ready: Vec<&Seat<T>> = shuffled(self.seats.iter().filter(|s| s.breaker.open_for().is_none()).collect());
-        ready.sort_by_key(|seat| seat.limiter.ready_in());
+        let ready: Vec<&Seat<T>> =
+            asking_order(self.seats.iter().filter(|s| s.breaker.open_for().is_none()).collect(), |seat| {
+                (&seat.limiter, &seat.health)
+            });
         if ready.is_empty() {
             return Err(EngineError::Refused("every source is cooling down".into()));
         }
         let providers: HashSet<&str> = ready.iter().map(|s| s.source.provider()).collect();
-        let workers = workers(request.limit, providers.len());
+        let usual_yield = ready.iter().map(|s| s.health.usual_yield()).sum::<f64>() / ready.len() as f64;
+        let workers = engines_needed(request.limit, usual_yield, providers.len());
         let (mut lists, mut errors, mut asked, mut refusals) = (Vec::new(), Vec::new(), 0, 0);
         let (mut answered, mut found, mut used) = (HashSet::new(), HashSet::new(), Vec::new());
         let mut queue: std::collections::VecDeque<&Seat<T>> = ready.into();
@@ -192,7 +201,10 @@ impl<T: Keyed + Clone + Send + 'static> Pool<T> {
             }
             let replies = join_all(batch.iter().map(|seat| async move {
                 seat.limiter.wait_turn().await;
-                seat.source.search(request).await
+                let started = Instant::now();
+                let reply = seat.source.search(request).await;
+                seat.health.record(reply.as_ref().ok().map(Vec::len), started.elapsed());
+                reply
             }))
             .await;
             for (seat, reply) in batch.iter().zip(replies) {

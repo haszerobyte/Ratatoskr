@@ -1,11 +1,14 @@
 //! Meta-search: dependable answers from several engines.
 //!
 //! - the encyclopedias (Wikipedia, Grokipedia) each add their one best page;
-//! - the web engines are asked in a shuffled order, a few at a time
-//!   (`ceil(limit / 10) + 1`, at most one per result provider: Yahoo and
-//!   DuckDuckGo both serve Bing's), and no more once there are enough
-//!   results, so a search costs two engines a request rather than all of
-//!   them, and no engine sees every query;
+//! - the web engines are asked free-soonest and healthiest first (each
+//!   keeps a moving record of how often it answers, how fast and how much:
+//!   [`Health`]), with a random spread so engines of similar health share
+//!   the searches and none sees every query;
+//! - as many at once as their usual yield says the limit needs, at least
+//!   two as a hedge, at most one per result provider (Yahoo, DuckDuckGo and
+//!   Bing all serve Bing's index), and no more once there are enough
+//!   results;
 //! - results are merged by URL and scored: a vote from each engine that
 //!   found one, worth less the lower it ranked it, plus how much of the
 //!   query its title, snippet and URL answer ([`fuse`]).
@@ -19,12 +22,12 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures::future::join_all;
 
-use super::{Engine, EngineError, Hit, SearchFuture, SearchRequest, browser};
-use crate::polite::{CircuitBreaker, RateLimiter};
+use super::{Engine, EngineError, Hit, SearchFuture, SearchRequest};
+use crate::polite::{CircuitBreaker, Health, RateLimiter, asking_order, engines_needed};
 
 /// One engine of the meta-search.
 pub struct Member {
@@ -47,11 +50,12 @@ impl Member {
     }
 }
 
-/// A member with its breaker and its pace.
+/// A member with its breaker, its pace and its recent record.
 struct Seat {
     member: Member,
     breaker: CircuitBreaker,
     limiter: RateLimiter,
+    health: Health,
 }
 
 pub struct Meta {
@@ -61,8 +65,12 @@ pub struct Meta {
 impl Meta {
     /// `interval` spaces the requests to each engine; `cooldown` rests one that refused.
     pub fn new(members: Vec<Member>, cooldown: Duration, interval: Duration) -> Self {
-        let seat =
-            |member| Seat { member, breaker: CircuitBreaker::new(cooldown), limiter: RateLimiter::new(interval) };
+        let seat = |member| Seat {
+            member,
+            breaker: CircuitBreaker::new(cooldown),
+            limiter: RateLimiter::new(interval),
+            health: Health::default(),
+        };
         Self { seats: members.into_iter().map(seat).collect() }
     }
 }
@@ -175,19 +183,6 @@ pub fn fuse(lists: Vec<Vec<Hit>>, query: &str) -> Vec<Hit> {
     scored.into_iter().map(|(_, _, hit)| hit).collect()
 }
 
-/// How many web engines to ask at once for `limit` results.
-pub(crate) fn workers(limit: usize, providers: usize) -> usize {
-    (limit.div_ceil(10) + 1).min(providers).max(1)
-}
-
-/// `items` in a random order (Fisher-Yates).
-pub(crate) fn shuffled<T>(mut items: Vec<T>) -> Vec<T> {
-    for i in (1..items.len()).rev() {
-        items.swap(i, (browser::random_u64() % (i as u64 + 1)) as usize);
-    }
-    items
-}
-
 #[derive(Default)]
 struct Answers {
     lists: Vec<Vec<Hit>>,
@@ -208,7 +203,10 @@ impl Meta {
             let asked = if seat.member.encyclopedia { &one } else { request };
             async move {
                 seat.limiter.wait_turn().await;
-                seat.member.engine.search_request(asked).await
+                let started = Instant::now();
+                let reply = seat.member.engine.search_request(asked).await;
+                seat.health.record(reply.as_ref().ok().map(Vec::len), started.elapsed());
+                reply
             }
         }))
         .await;
@@ -268,10 +266,7 @@ impl Engine for Meta {
                     .filter(|s| s.member.encyclopedia == encyclopedia && s.breaker.open_for().is_none())
                     .collect()
             };
-            // A random order, then the engines free soonest first (a stable
-            // sort: equally free ones keep their random order).
-            let mut web = shuffled(ready(false));
-            web.sort_by_key(|seat| seat.limiter.ready_in());
+            let web = asking_order(ready(false), |seat| (&seat.limiter, &seat.health));
             // An encyclopedia adds one page: not worth waiting for its turn.
             // Nor for a later page or a recent-only search: its one best page
             // answers neither.
@@ -284,7 +279,8 @@ impl Engine for Meta {
                 return Err(EngineError::Refused("every web engine is cooling down".into()));
             }
             let providers: HashSet<&str> = web.iter().map(|s| s.member.provider).collect();
-            let workers = workers(limit, providers.len());
+            let usual_yield = web.iter().map(|s| s.health.usual_yield()).sum::<f64>() / web.len() as f64;
+            let workers = engines_needed(limit, usual_yield, providers.len());
             let mut answers = Answers::default();
             let mut answered: HashSet<&'static str> = HashSet::new();
             let mut queue: std::collections::VecDeque<_> = web.into();
@@ -414,16 +410,30 @@ mod tests {
     }
 
     #[test]
-    fn a_few_engines_at_a_time() {
-        assert_eq!(workers(5, 3), 2);
-        assert_eq!(workers(10, 3), 2);
-        assert_eq!(workers(25, 3), 3, "never more than the providers");
-        assert_eq!(workers(5, 0), 1);
-        let mut seen = HashSet::new();
-        for _ in 0..50 {
-            seen.insert(shuffled(vec![1, 2, 3]));
+    fn as_many_engines_as_their_yield_needs_and_two_to_hedge() {
+        assert_eq!(engines_needed(5, 10.0, 3), 2, "one would do; the second hedges");
+        assert_eq!(engines_needed(25, 10.0, 5), 4);
+        assert_eq!(engines_needed(25, 10.0, 3), 3, "never more than the providers");
+        assert_eq!(engines_needed(10, 3.0, 9), 5, "engines that give few results: more of them");
+        assert_eq!(engines_needed(5, 10.0, 1), 1);
+        assert_eq!(engines_needed(5, 10.0, 0), 1);
+    }
+
+    #[test]
+    fn healthy_engines_are_asked_first_and_similar_ones_share_the_lead() {
+        let failing = Health::default();
+        for _ in 0..5 {
+            failing.record(None, Duration::from_secs(5));
         }
-        assert!(seen.len() > 1, "the order varies");
+        let free = || RateLimiter::new(Duration::ZERO);
+        let seats = [("failing", free(), failing), ("a", free(), Health::default()), ("b", free(), Health::default())];
+        let mut leaders = HashSet::new();
+        for _ in 0..60 {
+            let order = asking_order(seats.iter().collect(), |seat| (&seat.1, &seat.2));
+            assert_eq!(order[2].0, "failing");
+            leaders.insert(order[0].0);
+        }
+        assert_eq!(leaders.len(), 2, "neither healthy engine sees every query");
     }
 
     /// A fake engine recording that it was asked.
