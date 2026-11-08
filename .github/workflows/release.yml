@@ -110,7 +110,7 @@ jobs:
           name="ratatoskr-${TAG}-${{ matrix.target }}"
           mkdir "$name"
           bin=ratatoskr; [ "$RUNNER_OS" = Windows ] && bin=ratatoskr.exe
-          cp "target/release/$bin" README.md LICENSE-MIT LICENSE-APACHE NOTICE "$name/"
+          cp "target/release/$bin" README.md LICENSE NOTICE "$name/"
           if [ "${{ matrix.archive }}" = zip ]; then
             7z a -tzip "$name.zip" "$name" >/dev/null
             echo "ASSET=$name.zip" >> "$GITHUB_ENV"

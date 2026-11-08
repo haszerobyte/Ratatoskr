@@ -12,7 +12,7 @@
   <a href="https://github.com/haszerobyte/Ratatoskr/actions/workflows/ci.yml"><img src="https://github.com/haszerobyte/Ratatoskr/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://crates.io/crates/ratatoskr-web"><img src="https://img.shields.io/crates/v/ratatoskr-web" alt="crates.io"></a>
   <a href="https://docs.rs/ratatoskr-web"><img src="https://img.shields.io/docsrs/ratatoskr-web" alt="docs.rs"></a>
-  <a href="#license"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue" alt="License: MIT OR Apache-2.0"></a>
+  <a href="#license"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License: Apache-2.0"></a>
 </p>
 
 Ratatoskr gives an agent its `web_search` and `web_fetch` tools:
@@ -47,12 +47,11 @@ squirrel who runs messages up and down the world tree.
   `web_search` and `web_fetch`.
 - **No API key needed.** Search works out of the box. Brave's and Google's APIs
   are optional fallbacks.
-- **Meta-search** modelled on [ddgs](https://github.com/deedy5/ddgs)'s `auto`
-  backend:
+- **Meta-search:**
   - engines: Yahoo, DuckDuckGo and Yandex, plus Wikipedia's and Grokipedia's
     best page;
   - merged and de-duplicated by URL;
-  - ranked the way ddgs ranks.
+  - ranked by agreement between engines and by where the query's words appear.
 - **Resilient:**
   - each engine has its own pacing and circuit breaker;
   - one engine refusing doesn't stop a search;
@@ -65,8 +64,8 @@ squirrel who runs messages up and down the world tree.
   refused, at connect time and on every redirect.
 - **Cached:** a repeated question within 15 minutes never leaves the machine.
 - **Small and fast:** one 10 MB binary. As an MCP server it uses about 6 MB at
-  idle and answers in 0.01 s, against ~90 MB and 1–4 s for the Python
-  alternatives (see [Performance](#performance)).
+  idle and answers in 0.01 s, against 95 MB and 3.6 s for the reference
+  Python fetch server (see [Performance](#performance)).
 
 ## Install
 
@@ -273,7 +272,6 @@ Everything is optional.
 
 | Variable | Effect |
 |---|---|
-| `DDGS_API_URL` | a [ddgs](https://github.com/deedy5/ddgs) API server (`ddgs api`), used after the meta-search |
 | `BRAVE_SEARCH_API_KEY` | Brave Search API, as a fallback |
 | `GOOGLE_CSE_KEY`, `GOOGLE_CSE_ID` | Google Programmable Search, as a fallback (both needed) |
 | `RATATOSKR_CONTACT` | a URL or email appended to the API engines' User-Agent, so their operators can reach you |
@@ -291,7 +289,7 @@ Defaults (`Settings::default()`):
 
 `search` asks sources in order and returns the first one that gives results:
 
-1. **The meta-search** (ddgs's `auto` backend, ported):
+1. **The meta-search:**
    - Wikipedia and Grokipedia each add the one article whose title matches the
      query, if there is one;
    - the web engines are asked a few at a time, in a random order: Yahoo and
@@ -302,9 +300,8 @@ Defaults (`Settings::default()`):
    - results are de-duplicated by URL;
    - those several engines found come first, then Wikipedia pages, then by
      where the query's words appear (title and snippet, title, snippet).
-2. **A ddgs server**, if configured.
-3. **Brave's and Google's APIs**, if keyed.
-4. **Wikipedia's full-text search.**
+2. **Brave's and Google's APIs**, if keyed.
+3. **Wikipedia's full-text search.**
 
 If no web engine answers, the meta-search doesn't pass off the encyclopedia
 pages as an answer: the next source gets its turn.
@@ -328,49 +325,39 @@ pages as an answer: the next source gets its turn.
 
 ## Performance
 
-ratatoskr compared with [ddgs](https://github.com/deedy5/ddgs) 9.14.4 (Python,
-search and fetch) and the reference MCP fetch server
+ratatoskr compared with the reference MCP fetch server,
 [`mcp-server-fetch`](https://github.com/modelcontextprotocol/servers/tree/main/src/fetch)
-2026.11.4 (Python, fetch only).
+2026.11.4 (Python).
 
 **Setup:**
 - Apple M4 Pro, macOS 26.7, ratatoskr 0.1.0 release build;
 - each tool runs in its own fresh process;
-- the runs are interleaved, so every tool sees the same network;
-- times are medians.
+- times are medians over 5 calls.
 
-**Command line**, one process per request (5 searches, 3 fetches):
+**As an MCP server:**
 
-| | ratatoskr | ddgs |
+| | ratatoskr `web_fetch` | mcp-server-fetch `fetch` |
 |---|---|---|
-| search: time | **1.13 s** | 2.45 s |
-| search: peak memory | **19 MB** | 72 MB |
-| fetch: time | **0.33 s** | 0.47 s |
-| fetch: peak memory | **17 MB** | 71 MB |
+| ready to answer | **0.01 s** | 3.58 s |
+| memory at idle | **6 MB** | 95 MB |
+| memory after the calls | **44 MB** | 143 MB |
+| time per call (median) | **0.11 s** | 1.59 s |
+| install size | **9.8 MB**, one binary, search included | 83.9 MB environment |
 
-**As an MCP server**, 5 calls each:
+ratatoskr's own search, measured the same way:
 
-| | ratatoskr `web_search` | ddgs `search_text` | ratatoskr `web_fetch` | mcp-server-fetch `fetch` |
-|---|---|---|---|---|
-| ready to answer | **0.01 s** | 1.47 s | **0.01 s** | 3.58 s |
-| memory at idle | **6 MB** | 90 MB | **6 MB** | 95 MB |
-| memory after the calls | **20 MB** | 102 MB | **44 MB** | 143 MB |
-| time per call (median) | **1.06 s** | 2.93 s | **0.11 s** | 1.59 s |
-
-**Install size:**
-
-| | Size |
+| `web_search` | |
 |---|---|
-| ratatoskr (one static binary, search and fetch) | **9.8 MB** |
-| ddgs environment, with its MCP server | 73.5 MB |
-| mcp-server-fetch environment | 83.9 MB |
+| time per call (median) | 1.06 s |
+| memory at idle, after 5 searches | 6 MB, 20 MB |
+| one-shot command line | 1.13 s, 19 MB peak |
 
 Search time is mostly the search engines' own response time. It varies with
 your network and location, and from hour to hour. Memory and startup barely
 vary.
 
 Reproduce it with `bench/compare.sh [path/to/ratatoskr]`. It needs `uv` and
-`python3`, and installs the Python tools into a throwaway environment.
+`python3`, and installs the Python server into a throwaway environment.
 
 ## Politeness, presentation and terms
 
@@ -459,16 +446,9 @@ Search engines change their pages. When an engine stops parsing:
 
 ## License
 
-Licensed under either of
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE)), or
-- MIT license ([LICENSE-MIT](LICENSE-MIT))
-
-at your option.
-
-Parts of the search engines, scheduling and ranking are ported from
-[ddgs](https://github.com/deedy5/ddgs) (MIT, © 2022 deedy5); see [NOTICE](NOTICE).
+Licensed under the [Apache License, Version 2.0](LICENSE). See [NOTICE](NOTICE)
+for the attributions it requires.
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in this work, as defined in the Apache-2.0 license, shall be dual
-licensed as above, without any additional terms or conditions.
+for inclusion in this work shall be licensed as above, without any additional
+terms or conditions.

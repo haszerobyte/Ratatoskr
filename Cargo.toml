@@ -4,7 +4,7 @@
 name = "ratatoskr-web"
 version = "0.1.0"
 edition = "2024"
-license = "MIT OR Apache-2.0"
+license = "Apache-2.0"
 description = "Web search and page fetching for LLM tools: a keyless meta-search (Yahoo, DuckDuckGo, Yandex, Wikipedia, Grokipedia), an SSRF-safe fetcher, and an MCP server"
 repository = "https://github.com/haszerobyte/Ratatoskr"
 homepage = "https://github.com/haszerobyte/Ratatoskr"
@@ -14,7 +14,7 @@ keywords = ["search", "web-fetch", "llm", "mcp", "agent"]
 categories = ["web-programming::http-client", "text-processing", "command-line-utilities"]
 # What crates.io gets: the source, its tests and fixtures, and the docs; not
 # the workflows, the benchmark script or the logo.
-include = ["src/**/*", "tests/**/*", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE-MIT", "LICENSE-APACHE", "NOTICE"]
+include = ["src/**/*", "tests/**/*", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "NOTICE"]
 
 [lib]
 name = "ratatoskr"

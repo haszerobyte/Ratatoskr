@@ -1,5 +1,4 @@
-//! Yahoo Search (search.yahoo.com, Bing-backed), ddgs's "yahoo" engine:
-//! `p=<query>` on a URL with random `_ylt`/`_ylu` tokens, results in
+//! Yahoo Search (search.yahoo.com, Bing-backed): `p=<query>` on a URL with random `_ylt`/`_ylu` tokens, results in
 //! `div.relsrch`, links wrapped in r.search.yahoo.com redirects whose `RU=`
 //! segment carries the destination. A browser client is enough: Yahoo's first
 //! answer is a consent redirect that sets a cookie, then the results.

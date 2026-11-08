@@ -1,5 +1,5 @@
-//! DuckDuckGo's HTML endpoint (html.duckduckgo.com/html), ddgs's "duckduckgo"
-//! engine: one POST with ddgs's payload (`q`, `b`, `l`) from a
+//! DuckDuckGo's HTML endpoint (html.duckduckgo.com/html): one POST with the
+//! payload its own search form sends (`q`, `b`, `l`) from a
 //! [`super::browser`] client, parsed from the server-rendered results; ads
 //! are skipped.
 //!

@@ -2,7 +2,6 @@
 
 pub mod brave;
 pub mod browser;
-pub mod ddgs;
 pub mod duckduckgo;
 pub mod google;
 pub mod grokipedia;

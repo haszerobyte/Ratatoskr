@@ -132,8 +132,8 @@ pub fn builder(profile: Profile, platform: Platform) -> wreq::ClientBuilder {
 
 /// Where a scraped engine's client comes from for each search.
 ///
-/// ddgs builds a new client, with a random browser, for every search, and
-/// that is what keeps Yahoo answering: a session it has throttled stays
+/// A new client, with a random browser, for every search is what keeps
+/// Yahoo answering: a session it has throttled stays
 /// throttled. From one throttled host, five searches over one reused client
 /// got no results at all, five over fresh clients got one to three.
 pub enum Sessions {

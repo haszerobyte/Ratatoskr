@@ -1,7 +1,6 @@
-//! Yandex's site-search page (yandex.com/search/site), ddgs's "yandex"
-//! engine: a GET with ddgs's payload (`text`, `web=1`, a random seven-digit
-//! `searchid`) from a fresh [`super::browser`] client, results in
-//! `li.b-serp-item`. Its own index, not Bing's: it kept answering a host
+//! Yandex's site-search page (yandex.com/search/site): a GET with the payload
+//! its search widget sends (`text`, `web=1`, a random seven-digit `searchid`)
+//! from a fresh [`super::browser`] client, results in `li.b-serp-item`. Its own index, not Bing's: it kept answering a host
 //! that DuckDuckGo challenged and Yahoo throttled.
 
 use scraper::{Html, Selector};

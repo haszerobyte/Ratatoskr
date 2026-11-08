@@ -2,7 +2,7 @@
 //! - full-text search (`action=query&list=search`): a sanctioned source, good
 //!   for factual questions, and the last fallback of a search;
 //! - the best page ([`Wikipedia::best_page`]), the meta-search's encyclopedia
-//!   slot, as ddgs's "wikipedia" engine does it: the article whose title
+//!   slot: the article whose title
 //!   matches the query (`action=opensearch`, fuzzy), with its intro as the
 //!   snippet, and nothing for a disambiguation page. Full-text search there put
 //!   any article that mentions the words first: "tokio select macro" came back

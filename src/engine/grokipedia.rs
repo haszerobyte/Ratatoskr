@@ -1,6 +1,5 @@
-//! Grokipedia's typeahead API, ddgs's "grokipedia" engine: the one best
-//! encyclopedia page for a query, which ddgs puts in every text search next to
-//! Wikipedia's. JSON, so the plain client (our User-Agent) is enough.
+//! Grokipedia's typeahead API: the one best encyclopedia page for a query,
+//! added to every search next to Wikipedia's. JSON, so the plain client (our User-Agent) is enough.
 
 use serde_json::Value;
 
@@ -46,7 +45,7 @@ impl Engine for Grokipedia {
 }
 
 /// Hits from a typeahead answer: the page at `/page/<slug>`, the snippet's
-/// first paragraph dropped when there are more (ddgs: it repeats the title).
+/// first paragraph dropped when there are more (it repeats the title).
 pub fn parse(body: &Value, limit: usize) -> Result<Vec<Hit>, EngineError> {
     let results =
         body.get("results").and_then(Value::as_array).ok_or_else(|| EngineError::Parse("no results field".into()))?;

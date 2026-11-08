@@ -3,11 +3,10 @@
 //! answers back.
 //!
 //! [`Ratatoskr::search`] asks sources in order and returns the first useful
-//! answer: its own meta-search first (ddgs's `auto` backend in pure Rust:
-//! Wikipedia's and Grokipedia's best page, and Yahoo, DuckDuckGo and Yandex
-//! in a shuffled order, two at a time, each search from a fresh browser,
-//! merged and ranked as ddgs ranks; see [`engine::meta`]), then a local
-//! ddgs service if configured, Brave's and Google's official APIs when keyed,
+//! answer: its own meta-search first (Wikipedia's and Grokipedia's best page,
+//! and Yahoo, DuckDuckGo and Yandex in a shuffled order, two at a time, each
+//! search from a fresh browser, merged and ranked; see [`engine::meta`]),
+//! then Brave's and Google's official APIs when keyed,
 //! and Wikipedia last — an encyclopedia, not web search, kept only for plain
 //! facts when nothing else answers. [`Ratatoskr::fetch`] reads a page as text.
 //!
@@ -31,7 +30,7 @@ use engine::{Engine, Hit};
 use polite::{Cache, CircuitBreaker, RateLimiter};
 
 /// The User-Agent of the API engines (Wikipedia, Grokipedia, Brave's and
-/// Google's APIs, a ddgs server): who is asking, not a browser. The scraped
+/// Google's APIs): who is asking, not a browser. The scraped
 /// engines and page fetches present as a browser instead ([`engine::browser`]).
 ///
 /// An API operator who sees this traffic should be able to reach whoever runs
@@ -108,8 +107,6 @@ impl Default for Settings {
 /// Wikipedia (last) need nothing and are always present.
 #[derive(Clone, Debug, Default)]
 pub struct Sources {
-    /// A local `ddgs api` service, e.g. `http://127.0.0.1:8765`.
-    pub ddgs_url: Option<String>,
     pub brave_key: Option<String>,
     pub google_key: Option<String>,
     /// Google's Programmable Search Engine id.
@@ -117,11 +114,10 @@ pub struct Sources {
 }
 
 impl Sources {
-    /// From DDGS_API_URL, BRAVE_SEARCH_API_KEY, GOOGLE_CSE_KEY, GOOGLE_CSE_ID.
+    /// From BRAVE_SEARCH_API_KEY, GOOGLE_CSE_KEY, GOOGLE_CSE_ID.
     pub fn from_env() -> Self {
         let var = |key: &str| std::env::var(key).ok().filter(|v| !v.trim().is_empty());
         Self {
-            ddgs_url: var("DDGS_API_URL"),
             brave_key: var("BRAVE_SEARCH_API_KEY"),
             google_key: var("GOOGLE_CSE_KEY"),
             google_cx: var("GOOGLE_CSE_ID"),
@@ -163,8 +159,8 @@ impl Ratatoskr {
     pub fn standard(sources: &Sources) -> Self {
         let settings = Settings::default();
         let http = engine::http_client(settings.timeout);
-        // ddgs 9.14's text engines that answer a browser. Its Brave, Google,
-        // Mojeek and Startpage engines are left out: tried from two networks,
+        // The engines that answer a browser. Brave's, Google's, Mojeek's and
+        // Startpage's result pages are left out: tried from two networks,
         // Brave and Mojeek answered with a captcha, Google with its JavaScript
         // wall and Startpage with Anubis's proof of work, and challenges are
         // never solved here.
@@ -178,9 +174,6 @@ impl Ratatoskr {
         ];
         let mut engines: Vec<Arc<dyn Engine>> =
             vec![Arc::new(engine::meta::Meta::new(meta, settings.cooldown, settings.min_interval))];
-        if let Some(base) = sources.ddgs_url.as_deref().filter(|u| !u.trim().is_empty()) {
-            engines.push(Arc::new(engine::ddgs::Ddgs::new(http.clone(), base.trim())));
-        }
         if let Some(key) = sources.brave_key.as_deref().filter(|k| !k.trim().is_empty()) {
             engines.push(Arc::new(engine::brave::Brave::new(http.clone(), key.trim())));
         }

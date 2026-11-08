@@ -1,5 +1,4 @@
-//! Meta-search, the way ddgs's `backend="auto"` gets dependable answers
-//! (ddgs 9.14, `DDGS._search_sync`):
+//! Meta-search: dependable answers from several engines.
 //!
 //! - the encyclopedias (Wikipedia, Grokipedia) each add their one best page;
 //! - the web engines are asked in a shuffled order, a few at a time
@@ -8,11 +7,10 @@
 //!   results, so a search costs two engines a request rather than all of
 //!   them, and no engine sees every query;
 //! - results are de-duplicated by URL, those several engines found first,
-//!   then ranked as ddgs's SimpleFilterRanker does.
+//!   then ranked by where the query's words appear.
 //!
 //! Each engine has its own circuit breaker, so one that refuses is left alone
-//! while the others carry on, and its own pace (ddgs has none; ratatoskr
-//! keeps one, per engine): searches made at the same time go first to the
+//! while the others carry on, and its own pace: searches made at the same time go first to the
 //! engines free soonest, rather than queueing one behind another. Only the
 //! web engines make an answer: when none answered, the encyclopedias' one page
 //! each is not passed off as a search, so the sources after this one get
@@ -81,7 +79,7 @@ fn url_key(url: &str) -> String {
     }
 }
 
-/// ddgs's ResultsAggregator: one hit per URL (the first seen), those more
+/// One hit per URL (the first seen), those more
 /// engines returned first, ties in the order they came.
 pub fn aggregate(lists: Vec<Vec<Hit>>) -> Vec<Hit> {
     let mut order: Vec<(String, Hit)> = Vec::new();
@@ -100,7 +98,7 @@ pub fn aggregate(lists: Vec<Vec<Hit>>) -> Vec<Hit> {
     ranked.into_iter().map(|(_, _, hit)| hit).collect()
 }
 
-/// ddgs's SimpleFilterRanker: Wikipedia pages first, then hits with a query
+/// Wikipedia pages first, then hits with a query
 /// word (three letters or more) in both title and snippet, in the title only,
 /// in the snippet only, then the rest; Wikimedia category pages dropped.
 pub fn rank(hits: Vec<Hit>, query: &str) -> Vec<Hit> {
@@ -131,7 +129,7 @@ pub fn rank(hits: Vec<Hit>, query: &str) -> Vec<Hit> {
     buckets.into_iter().flatten().collect()
 }
 
-/// How many web engines to ask at once for `limit` results (ddgs's max_workers).
+/// How many web engines to ask at once for `limit` results.
 fn workers(limit: usize, providers: usize) -> usize {
     (limit.div_ceil(10) + 1).min(providers).max(1)
 }
@@ -316,7 +314,7 @@ mod tests {
     }
 
     #[test]
-    fn ranking_follows_ddgs_simple_filter_ranker() {
+    fn ranking_puts_wikipedia_then_query_words_first() {
         let h = |url: &str, title: &str, snippet: &str| Hit {
             title: title.into(),
             url: url.into(),
@@ -344,7 +342,7 @@ mod tests {
     }
 
     #[test]
-    fn a_few_engines_at_a_time_as_ddgs_does() {
+    fn a_few_engines_at_a_time() {
         assert_eq!(workers(5, 3), 2);
         assert_eq!(workers(10, 3), 2);
         assert_eq!(workers(25, 3), 3, "never more than the providers");

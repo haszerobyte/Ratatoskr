@@ -1,7 +1,7 @@
 //! ratatoskr search <query> [limit] [country] | ratatoskr fetch <url> | ratatoskr mcp
 //! `mcp` serves the web_search and web_fetch tools to an MCP client over
 //! stdio; the others are for using the crate by hand. Optional sources come
-//! from the environment (DDGS_API_URL, BRAVE_SEARCH_API_KEY, GOOGLE_CSE_KEY +
+//! from the environment (BRAVE_SEARCH_API_KEY, GOOGLE_CSE_KEY +
 //! GOOGLE_CSE_ID).
 
 use ratatoskr::{Ratatoskr, Sources};
