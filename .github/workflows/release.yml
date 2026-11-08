@@ -35,7 +35,7 @@ jobs:
     name: check the version
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: The version is Cargo.toml's and is not released yet
@@ -87,7 +87,7 @@ jobs:
           # As in CI: published when it builds, not yet required to.
           - { target: x86_64-pc-windows-msvc, os: windows-2025, archive: zip, experimental: true }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build tools (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y cmake clang libclang-dev
@@ -128,7 +128,7 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           path: ${{ runner.temp }}/dist

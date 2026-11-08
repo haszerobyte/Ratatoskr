@@ -24,7 +24,7 @@ jobs:
     name: fmt and clippy
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build tools (BoringSSL needs cmake and libclang)
         run: sudo apt-get update && sudo apt-get install -y cmake clang libclang-dev
       - name: Toolchain (from rust-toolchain.toml)
@@ -49,7 +49,7 @@ jobs:
           - { name: macos x86_64, os: macos-15-intel, experimental: false }
           - { name: windows x86_64, os: windows-2025, experimental: true }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build tools (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y cmake clang libclang-dev
