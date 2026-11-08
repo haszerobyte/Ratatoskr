@@ -439,16 +439,83 @@ async fn pdf_text(bytes: Vec<u8>) -> String {
     .unwrap_or_default()
 }
 
-fn cap_text(mut text: String) -> (String, bool) {
+/// Said where a page over the text cap is cut, so a reader knows it goes on.
+const CUT_NOTE: &str = "[The page goes on; this text is cut at 100,000 characters.]";
+/// Said when a long page's links were dropped to fit it.
+const UNLINKED_NOTE: &str = "[A long page: its links are left out so more of its text fits.]";
+
+/// The text within MAX_TEXT, and whether some of it was cut. A long page
+/// loses its link URLs first, keeping each link's text: on an encyclopedia
+/// article with hundreds of references they were most of what reached the cap,
+/// and the article stopped mid-sentence a third of the way through. What is
+/// still over is cut at a line, with a note saying so, never silently
+/// mid-word.
+fn cap_text(text: String) -> (String, bool) {
     if text.len() <= MAX_TEXT {
         return (text, false);
     }
-    let mut end = MAX_TEXT;
-    while !text.is_char_boundary(end) {
+    let unlinked = unlink(&text);
+    if unlinked.len() + UNLINKED_NOTE.len() < MAX_TEXT {
+        return (format!("{unlinked}\n{UNLINKED_NOTE}"), false);
+    }
+    let room = MAX_TEXT - CUT_NOTE.len() - 1;
+    let mut end = room;
+    while !unlinked.is_char_boundary(end) {
         end -= 1;
     }
-    text.truncate(end);
-    (text, true)
+    // Back to the last line break, unless that would lose more than a few lines.
+    if let Some(line) = unlinked[..end].rfind('\n').filter(|&at| end - at < 2_000) {
+        end = line;
+    }
+    (format!("{}\n{CUT_NOTE}", &unlinked[..end]), true)
+}
+
+/// `text` with each Markdown link `[label](http…)` reduced to its label.
+fn unlink(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(open) = rest.find('[') {
+        let after = &rest[open + 1..];
+        match link_at(after) {
+            Some((label, used)) => {
+                out.push_str(&rest[..open]);
+                out.push_str(label);
+                rest = &after[used..];
+            }
+            None => {
+                out.push_str(&rest[..=open]);
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// After a `[`: a link's label and how many bytes the rest of the link takes,
+/// when what follows is `label](http…)`. A URL may hold balanced parentheses
+/// (`…/wiki/Rust_(programming_language)`).
+fn link_at(after: &str) -> Option<(&str, usize)> {
+    let mid = after.find("](")?;
+    let label = &after[..mid];
+    if label.contains(['[', ']', '\n']) {
+        return None;
+    }
+    let tail = &after[mid + 2..];
+    if !tail.starts_with("http") {
+        return None;
+    }
+    let mut depth = 0usize;
+    for (i, c) in tail.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' if depth == 0 => return Some((label, mid + 2 + i + 1)),
+            ')' => depth -= 1,
+            c if c.is_whitespace() => return None,
+            _ => {}
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -456,6 +523,30 @@ mod tests {
     use std::net::{Ipv4Addr, Ipv6Addr};
 
     use super::*;
+
+    #[test]
+    fn links_become_their_labels() {
+        assert_eq!(
+            unlink(
+                "See [Rust](https://en.wikipedia.org/wiki/Rust_(programming_language)) and [image: x] [a](/rel) [b](https://b.example/)."
+            ),
+            "See Rust and [image: x] [a](/rel) b."
+        );
+    }
+
+    /// Regression: a long article was cut at exactly 100,000 bytes, mid-word,
+    /// with nothing saying so, and its link URLs had used most of that room.
+    #[test]
+    fn a_long_page_loses_its_links_before_its_text_and_says_where_it_is_cut() {
+        let line =
+            "Prose about the war [with a link](https://en.wikipedia.org/wiki/Some_long_article_title_here) in it.\n";
+        let (text, cut) = cap_text(line.repeat(MAX_TEXT / line.len() + 10));
+        assert!(!cut && !text.contains("](http") && text.ends_with(UNLINKED_NOTE), "links dropped, nothing cut");
+
+        let (text, cut) = cap_text("plain words\n".repeat(MAX_TEXT / 12 + 100));
+        assert!(cut && text.len() <= MAX_TEXT && text.ends_with(CUT_NOTE));
+        assert!(text.trim_end_matches(CUT_NOTE).ends_with("plain words\n"), "cut at a line, not mid-word");
+    }
 
     #[test]
     fn wikimedia_sites_are_asked_as_ratatoskr() {
