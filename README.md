@@ -45,8 +45,7 @@ squirrel who runs messages up and down the world tree.
 ## Features
 
 - **An MCP server out of the box:** `ratatoskr mcp` gives any MCP client
-  `web_search`, `news_search`, `image_search`, `video_search`, `book_search`
-  and `web_fetch`.
+  `web_search` (web pages, news, images, videos or books) and `web_fetch`.
 - **Web, news, images, videos and books,** each with typed results, and every
   search with a country, a time limit (past day, week, month, year), safe
   search and paging.
@@ -101,15 +100,11 @@ Building needs `cmake` and libclang; see [Building from source](#building-from-s
 
 ## MCP server
 
-`ratatoskr mcp` serves six tools to an MCP client over stdio:
+`ratatoskr mcp` serves two tools to an MCP client over stdio:
 
 | Tool | Arguments | Returns |
 |---|---|---|
-| `web_search` | `query` (required); `limit` (1–20, default 8), `country` (ISO code), `time` (`day`/`week`/`month`/`year`), `safesearch` (`on`/`moderate`/`off`), `page` | a numbered list: title, URL, snippet |
-| `news_search` | as `web_search` | title, source and date (ISO 8601), URL, summary |
-| `image_search` | as `web_search` | title, the image's URL, size and site, the page it is on |
-| `video_search` | as `web_search` | title, duration, publisher, date and views, URL, description |
-| `book_search` | `query` (required); `limit`, `page` | title, authors and year, the book's page |
+| `web_search` | `query` (required); `type` (`web`, `news`, `images`, `videos`, `books`; default `web`), `limit` (1–20, default 8), `country` (ISO code), `time` (`day`/`week`/`month`/`year`), `safesearch` (`on`/`moderate`/`off`), `page` | a numbered list. Web: title, URL, snippet. News: source and date (ISO 8601). Images: the image's URL, size, the page it is on. Videos: duration, publisher, views. Books: authors and year. |
 | `web_fetch` | `url` (required) | the page's title, URL and text, links as `[text](url)` |
 
 Install the binary first (see [Install](#install)), then add it to your client.
@@ -166,13 +161,14 @@ over any reader and writer.
 ## Command line
 
 ```sh
-ratatoskr search|news|images|videos|books <query> [limit] [country] [options]
+ratatoskr search <query> [limit] [country] [options]
 ratatoskr fetch <url>
 ratatoskr mcp                  # the MCP server, on stdin/stdout
 ```
 
-Options for every search: `--time day|week|month|year`,
-`--safesearch on|moderate|off`, `--page N`, `--country XX`.
+Options: `--type web|news|images|videos|books` (default `web`),
+`--time day|week|month|year`, `--safesearch on|moderate|off`, `--page N`,
+`--country XX`.
 
 ```console
 $ ratatoskr search "tokio select macro" 2
@@ -184,7 +180,7 @@ engine: meta (cached: false)
   https://tokio.rs/tokio/tutorial/select
   The tokio::select! macro allows waiting on multiple async computations and returns when a single…
 
-$ ratatoskr news "raspberry pi 5" 2 --time week
+$ ratatoskr search "raspberry pi 5" 2 --type news --time week
 sources: yahoo, bing (cached: false)
 1. Raspberry Pi 5 price hike means the 16GB model now costs three times what it did...
    TechRadar · 2026-11-07T23:00:05Z
@@ -192,7 +188,7 @@ sources: yahoo, bing (cached: false)
    …
 
 $ ratatoskr search "cricket scores" 5 IN      # results localized to India
-$ ratatoskr books "dune" 3
+$ ratatoskr search "dune" 3 --type books
 $ ratatoskr fetch https://www.raspberrypi.com/news/
 ```
 
