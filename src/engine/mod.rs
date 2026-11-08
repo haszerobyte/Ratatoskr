@@ -1,5 +1,6 @@
 //! Search engines behind one interface.
 
+pub mod bing;
 pub mod brave;
 pub mod browser;
 pub mod duckduckgo;
@@ -14,6 +15,8 @@ pub mod yandex;
 use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
+
+pub use crate::request::{SafeSearch, SearchRequest, TimeLimit};
 
 /// One search result.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -66,6 +69,13 @@ pub trait Engine: Send + Sync {
     fn search_in<'a>(&'a self, query: &'a str, limit: usize, country: Option<&'a str>) -> SearchFuture<'a> {
         let _ = country;
         self.search(query, limit)
+    }
+
+    /// The search with all its options ([`SearchRequest`]). The default is
+    /// [`Engine::search_in`]: the words, the limit and the country; engines
+    /// that support a time limit, safe search or paging override it.
+    fn search_request<'a>(&'a self, request: &'a SearchRequest) -> SearchFuture<'a> {
+        self.search_in(&request.query, request.limit, request.country.as_deref())
     }
     /// Whether the engine spaces its own requests (the meta-search paces each
     /// of its engines), so the caller should not add its own wait.

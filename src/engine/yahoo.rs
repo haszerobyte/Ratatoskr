@@ -6,7 +6,7 @@
 use scraper::{ElementRef, Html, Selector};
 
 use super::browser;
-use super::{Engine, EngineError, Hit, SearchFuture};
+use super::{Engine, EngineError, Hit, SearchFuture, SearchRequest};
 
 pub struct Yahoo {
     sessions: browser::Sessions,
@@ -32,13 +32,27 @@ impl Engine for Yahoo {
     }
 
     fn search<'a>(&'a self, query: &'a str, limit: usize) -> SearchFuture<'a> {
+        Box::pin(async move { self.search_request(&SearchRequest::new(query, limit)).await })
+    }
+
+    fn search_request<'a>(&'a self, req: &'a SearchRequest) -> SearchFuture<'a> {
         Box::pin(async move {
+            let (query, limit) = (req.query.as_str(), req.limit);
             let url = format!("{}/search;_ylt={};_ylu={}", self.base, browser::token(24), browser::token(47));
             // A typed search URL: no Referer, no same-origin claim. Each
             // search is a fresh browser with no Yahoo cookies, and a visit
             // "from Yahoo's own page" without them is a mismatch.
             let (http, _) = self.sessions.open();
-            let body = browser::read_page(http.get(&url).query(&[("p", query)]), "relsrch").await?;
+            let mut params = vec![("p", query.to_string())];
+            // The results page's own controls: a date filter `btf`, and the
+            // first result `b` of the next page (7 a page).
+            if let Some(time) = req.time {
+                params.push(("btf", time.letter().into()));
+            }
+            if req.page > 1 {
+                params.push(("b", ((req.page - 1) * 7 + 1).to_string()));
+            }
+            let body = browser::read_page(http.get(&url).query(&params), "relsrch").await?;
             if is_throttled(&body) {
                 return Err(EngineError::Refused("temporary problems page (throttled)".into()));
             }

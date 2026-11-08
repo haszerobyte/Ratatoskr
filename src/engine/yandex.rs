@@ -7,7 +7,7 @@ use scraper::{Html, Selector};
 
 use crate::text::squash;
 
-use super::{Engine, EngineError, Hit, SearchFuture, browser};
+use super::{Engine, EngineError, Hit, SearchFuture, SearchRequest, browser};
 
 pub struct Yandex {
     sessions: browser::Sessions,
@@ -32,11 +32,21 @@ impl Engine for Yandex {
     }
 
     fn search<'a>(&'a self, query: &'a str, limit: usize) -> SearchFuture<'a> {
+        Box::pin(async move { self.search_request(&SearchRequest::new(query, limit)).await })
+    }
+
+    /// Paging only: the site search has no date filter.
+    fn search_request<'a>(&'a self, req: &'a SearchRequest) -> SearchFuture<'a> {
         Box::pin(async move {
+            let (query, limit) = (req.query.as_str(), req.limit);
+            let page = (req.page - 1).to_string();
             let search_id = (1_000_000 + browser::random_u64() % 9_000_000).to_string();
             let (http, _) = self.sessions.open();
-            let request =
-                http.get(&self.endpoint).query(&[("text", query), ("web", "1"), ("searchid", search_id.as_str())]);
+            let mut params = vec![("text", query), ("web", "1"), ("searchid", search_id.as_str())];
+            if req.page > 1 {
+                params.push(("p", page.as_str()));
+            }
+            let request = http.get(&self.endpoint).query(&params);
             let body = browser::read_page(request, "b-serp-item").await?;
             parse(&body, limit)
         })

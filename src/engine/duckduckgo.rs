@@ -9,7 +9,7 @@
 
 use scraper::{Html, Selector};
 
-use super::{Engine, EngineError, Hit, SearchFuture, browser};
+use super::{Engine, EngineError, Hit, SafeSearch, SearchFuture, SearchRequest, browser};
 use crate::text::squash;
 
 pub struct DuckDuckGo {
@@ -39,7 +39,12 @@ impl Engine for DuckDuckGo {
     }
 
     fn search_in<'a>(&'a self, query: &'a str, limit: usize, country: Option<&'a str>) -> SearchFuture<'a> {
+        Box::pin(async move { self.search_request(&SearchRequest::new(query, limit).country(country)).await })
+    }
+
+    fn search_request<'a>(&'a self, req: &'a SearchRequest) -> SearchFuture<'a> {
         Box::pin(async move {
+            let (limit, country) = (req.limit, req.country.as_deref());
             // The search box on the same page posts this form; only Chrome
             // adds cache-control to a form submit.
             let (http, family) = self.sessions.open();
@@ -50,12 +55,31 @@ impl Engine for DuckDuckGo {
             if let Some(language) = country.and_then(|c| browser::accept_language(c, family)) {
                 form = form.header("accept-language", language);
             }
-            let request =
-                browser::same_site(form, &self.endpoint).form(&[("q", query), ("b", ""), ("l", region(country))]);
+            let request = browser::same_site(form, &self.endpoint).form(&form_fields(req, region(country)));
             let body = browser::read_page(request, "result__a").await?;
             parse(&body, limit)
         })
     }
+}
+
+/// The search form's fields: the query, the region, and the options the
+/// form's own controls set (safe search `kp` when not the default, date
+/// `df`, the next page's offset `s`).
+pub fn form_fields<'a>(req: &'a SearchRequest, region: &'a str) -> Vec<(&'static str, String)> {
+    let mut fields = vec![("q", req.query.clone()), ("b", String::new()), ("l", region.to_string())];
+    // Moderate is the form's default, which it does not send.
+    match req.safesearch {
+        SafeSearch::On => fields.push(("kp", "1".into())),
+        SafeSearch::Off => fields.push(("kp", "-2".into())),
+        SafeSearch::Moderate => {}
+    }
+    if let Some(time) = req.time {
+        fields.push(("df", time.letter().into()));
+    }
+    if req.page > 1 {
+        fields.push(("s", (10 + (req.page - 2) * 15).to_string()));
+    }
+    fields
 }
 
 /// DuckDuckGo's region for a country: its own codes (GB is "uk"), one
@@ -139,6 +163,27 @@ mod tests {
         );
         assert!(hits.iter().all(|h| h.url.starts_with("http")));
         assert_eq!(parse(RESULTS, 3).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn options_become_the_search_forms_fields() {
+        let req = SearchRequest::new("rust", 5)
+            .safesearch(SafeSearch::Off)
+            .time(Some(crate::request::TimeLimit::Week))
+            .page(3);
+        assert_eq!(
+            form_fields(&req, "in-en"),
+            vec![
+                ("q", "rust".into()),
+                ("b", "".into()),
+                ("l", "in-en".into()),
+                ("kp", "-2".into()),
+                ("df", "w".into()),
+                ("s", "25".into())
+            ]
+        );
+        let plain = form_fields(&SearchRequest::new("rust", 5), "wt-wt");
+        assert_eq!(plain.len(), 3, "moderate is the form's default, no date, first page: {plain:?}");
     }
 
     #[test]

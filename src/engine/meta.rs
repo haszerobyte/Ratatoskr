@@ -22,7 +22,7 @@ use std::time::Duration;
 
 use futures::future::join_all;
 
-use super::{Engine, EngineError, Hit, SearchFuture, browser};
+use super::{Engine, EngineError, Hit, SearchFuture, SearchRequest, browser};
 use crate::polite::{CircuitBreaker, RateLimiter};
 
 /// One engine of the meta-search.
@@ -156,18 +156,14 @@ struct Answers {
 impl Meta {
     /// Ask `batch` together; record each answer and trip the breakers of the
     /// engines that refused. Returns the providers that answered.
-    async fn ask(
-        &self,
-        batch: &[&Seat],
-        query: &str,
-        limit: usize,
-        country: Option<&str>,
-        answers: &mut Answers,
-    ) -> Vec<&'static str> {
-        let replies = join_all(batch.iter().map(|seat| async move {
-            let wanted = if seat.member.encyclopedia { 1 } else { limit };
-            seat.limiter.wait_turn().await;
-            seat.member.engine.search_in(query, wanted, country).await
+    async fn ask(&self, batch: &[&Seat], request: &SearchRequest, answers: &mut Answers) -> Vec<&'static str> {
+        let one = request.with_limit(1);
+        let replies = join_all(batch.iter().map(|seat| {
+            let asked = if seat.member.encyclopedia { &one } else { request };
+            async move {
+                seat.limiter.wait_turn().await;
+                seat.member.engine.search_request(asked).await
+            }
         }))
         .await;
         let mut answered = Vec::new();
@@ -214,7 +210,12 @@ impl Engine for Meta {
     }
 
     fn search_in<'a>(&'a self, query: &'a str, limit: usize, country: Option<&'a str>) -> SearchFuture<'a> {
+        Box::pin(async move { self.search_request(&SearchRequest::new(query, limit).country(country)).await })
+    }
+
+    fn search_request<'a>(&'a self, request: &'a SearchRequest) -> SearchFuture<'a> {
         Box::pin(async move {
+            let (query, limit) = (request.query.as_str(), request.limit);
             let ready = |encyclopedia: bool| -> Vec<&Seat> {
                 self.seats
                     .iter()
@@ -226,8 +227,13 @@ impl Engine for Meta {
             let mut web = shuffled(ready(false));
             web.sort_by_key(|seat| seat.limiter.ready_in());
             // An encyclopedia adds one page: not worth waiting for its turn.
-            let encyclopedias: Vec<&Seat> =
-                ready(true).into_iter().filter(|s| s.limiter.ready_in().is_zero()).collect();
+            // Nor for a later page or a recent-only search: its one best page
+            // answers neither.
+            let encyclopedias: Vec<&Seat> = if request.is_plain() {
+                ready(true).into_iter().filter(|s| s.limiter.ready_in().is_zero()).collect()
+            } else {
+                Vec::new()
+            };
             if web.is_empty() {
                 return Err(EngineError::Refused("every web engine is cooling down".into()));
             }
@@ -268,7 +274,7 @@ impl Engine for Meta {
                 if batch.is_empty() {
                     break;
                 }
-                answered.extend(self.ask(&batch, query, limit, country, &mut answers).await);
+                answered.extend(self.ask(&batch, request, &mut answers).await);
                 batch = Vec::new();
                 if answers.web_found.len() >= limit {
                     break;

@@ -4,7 +4,7 @@
 //!
 //! [`Ratatoskr::search`] asks sources in order and returns the first useful
 //! answer: its own meta-search first (Wikipedia's and Grokipedia's best page,
-//! and Yahoo, DuckDuckGo and Yandex in a shuffled order, two at a time, each
+//! and Yahoo, DuckDuckGo, Bing and Yandex in a shuffled order, two at a time, each
 //! search from a fresh browser, merged and ranked; see [`engine::meta`]),
 //! then an external search server if configured, Brave's and Google's
 //! official APIs when keyed,
@@ -22,6 +22,7 @@ pub mod engine;
 pub mod fetch;
 pub mod mcp;
 pub mod polite;
+pub mod request;
 pub mod text;
 
 use std::sync::Arc;
@@ -29,6 +30,7 @@ use std::time::Duration;
 
 use engine::{Engine, Hit};
 use polite::{Cache, CircuitBreaker, RateLimiter};
+pub use request::{SafeSearch, SearchRequest, TimeLimit};
 
 /// The User-Agent of the API engines (Wikipedia, Grokipedia, Brave's and
 /// Google's APIs, a search server): who is asking, not a browser. The scraped
@@ -174,6 +176,7 @@ impl Ratatoskr {
             Member::encyclopedia(Arc::new(engine::grokipedia::Grokipedia::new(http.clone()))),
             Member::web(Arc::new(engine::yahoo::Yahoo::new(settings.timeout)), "bing"),
             Member::web(Arc::new(engine::duckduckgo::DuckDuckGo::new(settings.timeout)), "bing"),
+            Member::web(Arc::new(engine::bing::Bing::new(settings.timeout)), "bing"),
             Member::web(Arc::new(engine::yandex::Yandex::new(settings.timeout)), "yandex"),
         ];
         let mut engines: Vec<Arc<dyn Engine>> =
@@ -208,7 +211,13 @@ impl Ratatoskr {
         limit: usize,
         country: Option<&str>,
     ) -> Result<SearchOutcome, SearchFailure> {
-        let key = format!("{limit}\u{0}{}\u{0}{}", country.unwrap_or(""), query.trim().to_lowercase());
+        self.search_with(&SearchRequest::new(query, limit).country(country)).await
+    }
+
+    /// [`Ratatoskr::search`] with every option: country, time limit, safe
+    /// search, page ([`SearchRequest`]).
+    pub async fn search_with(&self, request: &SearchRequest) -> Result<SearchOutcome, SearchFailure> {
+        let key = request.cache_key("text");
         if let Some((engine, hits)) = self.cache.get(&key) {
             return Ok(SearchOutcome { hits, engine, from_cache: true });
         }
@@ -222,7 +231,7 @@ impl Ratatoskr {
             if !slot.engine.paces_itself() {
                 slot.limiter.wait_turn().await;
             }
-            match slot.engine.search_in(query, limit, country).await {
+            match slot.engine.search_request(request).await {
                 Ok(hits) if !hits.is_empty() => {
                     slot.breaker.record_success();
                     self.cache.put(key, name, hits.clone());
