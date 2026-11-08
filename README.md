@@ -416,7 +416,7 @@ Some engines aren't used:
   - all of it that a reader sees, menus, header, sidebars and footer
     included: no guess at the "main content", which on a scoreboard, a
     listing or a search page drops the items it holds; scripts, styles,
-    a drop-down's unchosen options and anything hidden (`hidden`,
+    a drop-down's options other than the one it shows and anything hidden (`hidden`,
     `aria-hidden`, inline `display: none`) are left out;
   - a menu the page repeats (header and footer, desktop and mobile) is read
     once;

@@ -14,10 +14,9 @@
 
 use scraper::{ElementRef, Html, Node, Selector};
 
-/// Never text a reader sees: code, styles, markup templates, and a
-/// drop-down's options (only the chosen one shows; a country picker would
-/// add two hundred lines).
-const NEVER_TEXT: &[&str] = &["script", "style", "noscript", "template", "svg", "select"];
+/// Never text a reader sees: code, styles and markup templates. A drop-down
+/// is read as the one option it shows ([`chosen_option`]).
+const NEVER_TEXT: &[&str] = &["script", "style", "noscript", "template", "svg"];
 /// Below this much text a page is a script shell, worth its JSON-LD.
 const THIN_PAGE: usize = 300;
 /// JSON-LD text kept from a script shell, in characters.
@@ -206,6 +205,16 @@ fn drop_repeated_menus(lines: Vec<(bool, String)>) -> Vec<String> {
 }
 
 /// `element`'s text into `out`, leaving out what never shows.
+/// The option a drop-down shows: the one marked `selected`, else its first,
+/// as a browser does. None when it has no option with text.
+fn chosen_option(select: ElementRef) -> Option<String> {
+    let options = Selector::parse("option").ok()?;
+    let mut all = select.select(&options);
+    let first = all.next()?;
+    let chosen = std::iter::once(first).chain(all).find(|o| o.value().attr("selected").is_some()).unwrap_or(first);
+    Some(squash(&chosen.text().collect::<String>())).filter(|t| !t.is_empty())
+}
+
 fn walk(element: ElementRef, base: Option<&url::Url>, out: &mut String) {
     for child in element.children() {
         match child.value() {
@@ -216,6 +225,14 @@ fn walk(element: ElementRef, base: Option<&url::Url>, out: &mut String) {
                     continue;
                 }
                 let Some(child) = ElementRef::wrap(child) else { continue };
+                // A drop-down shows its chosen option, not every option: a
+                // country picker would be two hundred lines.
+                if tag == "select" {
+                    if let Some(option) = chosen_option(child) {
+                        out.push_str(&format!(" {option} "));
+                    }
+                    continue;
+                }
                 if tag == "pre" {
                     let code = child.text().collect::<String>();
                     let code = code.trim_matches('\n');
@@ -348,11 +365,16 @@ mod tests {
     }
 
     /// A drop-down shows one choice; its every option was two hundred lines
-    /// of countries on a sign-up form.
+    /// of countries on a sign-up form. The chosen one is kept: it can be the
+    /// answer (the currency or region a page is set to).
     #[test]
-    fn a_drop_down_s_options_are_left_out() {
-        let html = "<body><p>Pick a team</p><select><option>India</option><option>Pakistan</option></select></body>";
-        assert_eq!(html_to_text(html, None).1, "Pick a team");
+    fn a_drop_down_reads_as_its_chosen_option() {
+        let html = "<body><p>Currency</p><select><option>USD</option><option selected>INR</option>\
+            <option>EUR</option></select></body>";
+        assert_eq!(html_to_text(html, None).1, "Currency\nINR");
+        let first = "<body><label>Team <select><option>India</option><option>Pakistan</option></select></label></body>";
+        assert_eq!(html_to_text(first, None).1, "Team India", "none marked: the first shows");
+        assert_eq!(html_to_text("<body><p>x</p><select></select></body>", None).1, "x");
     }
 
     /// Code came back with its indentation squashed out, line by line.
