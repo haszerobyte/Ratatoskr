@@ -23,6 +23,18 @@ name = "ratatoskr"
 name = "ratatoskr"
 path = "src/bin/ratatoskr.rs"
 
+# `cargo binstall ratatoskr-web` downloads the release's prebuilt binary
+# instead of building: building needs cmake and libclang (BoringSSL). The URL
+# and layout are the release workflow's: ratatoskr-v<version>-<target>.tar.gz
+# (.zip on Windows) holding ratatoskr-v<version>-<target>/ratatoskr.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/ratatoskr-v{ version }-{ target }{ archive-suffix }"
+bin-dir = "ratatoskr-v{ version }-{ target }/{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
+
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-std", "io-util"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip", "brotli", "cookies"] }

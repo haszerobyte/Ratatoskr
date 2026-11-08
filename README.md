@@ -29,9 +29,11 @@ messages up and down the world tree.
 ## Quick start
 
 1. Install the `ratatoskr` command, either:
+   - with [`cargo binstall ratatoskr-web`](https://github.com/cargo-bins/cargo-binstall),
+     which downloads the prebuilt binary, no build tools needed;
    - from the [releases](https://github.com/haszerobyte/Ratatoskr/releases),
-     with no build tools needed; or
-   - with `cargo install ratatoskr-web --locked`, which needs
+     also prebuilt; or
+   - with `cargo install ratatoskr-web --locked`, which builds it and needs
      [cmake and libclang](#building-from-source).
 2. Add it to your agent, for example Claude Code:
    ```sh
@@ -82,6 +84,8 @@ messages up and down the world tree.
 ## Install
 
 **The command (`ratatoskr`):**
+- **With cargo-binstall:** `cargo binstall ratatoskr-web` fetches the prebuilt
+  binary for your platform from the release, with no build tools.
 - **Prebuilt:** download a binary from the
   [releases](https://github.com/haszerobyte/Ratatoskr/releases) for Linux
   (x86_64, aarch64), macOS (Intel, Apple Silicon) or Windows (x86_64). Check
