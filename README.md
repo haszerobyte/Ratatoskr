@@ -15,8 +15,9 @@
   <a href="#license"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License: Apache-2.0"></a>
 </p>
 
-Ratatoskr gives an agent its `web_search` and `web_fetch` tools:
-- **Search:** a meta-search over several engines, with fallbacks.
+Ratatoskr gives an agent its web tools:
+- **Search:** the web, news, images, videos and books, each a meta-search
+  over several sources, with fallbacks.
 - **Fetch:** reads a page as clean, link-preserving text.
 - **Safety:** a fetch can never reach your local network.
 
@@ -44,12 +45,16 @@ squirrel who runs messages up and down the world tree.
 ## Features
 
 - **An MCP server out of the box:** `ratatoskr mcp` gives any MCP client
-  `web_search` and `web_fetch`.
+  `web_search`, `news_search`, `image_search`, `video_search`, `book_search`
+  and `web_fetch`.
+- **Web, news, images, videos and books,** each with typed results, and every
+  search with a country, a time limit (past day, week, month, year), safe
+  search and paging.
 - **No API key needed.** Search works out of the box. Brave's and Google's APIs
   are optional fallbacks.
 - **Meta-search:**
-  - engines: Yahoo, DuckDuckGo and Yandex, plus Wikipedia's and Grokipedia's
-    best page;
+  - engines: Yahoo, DuckDuckGo, Bing and Yandex, plus Wikipedia's and
+    Grokipedia's best page;
   - merged and de-duplicated by URL;
   - ranked by agreement between engines and by where the query's words appear.
 - **Resilient:**
@@ -96,11 +101,15 @@ Building needs `cmake` and libclang; see [Building from source](#building-from-s
 
 ## MCP server
 
-`ratatoskr mcp` serves two tools to an MCP client over stdio:
+`ratatoskr mcp` serves six tools to an MCP client over stdio:
 
 | Tool | Arguments | Returns |
 |---|---|---|
-| `web_search` | `query` (required), `limit` (1–20, default 8), `country` (ISO code, optional) | a numbered list: title, URL, snippet |
+| `web_search` | `query` (required); `limit` (1–20, default 8), `country` (ISO code), `time` (`day`/`week`/`month`/`year`), `safesearch` (`on`/`moderate`/`off`), `page` | a numbered list: title, URL, snippet |
+| `news_search` | as `web_search` | title, source and date (ISO 8601), URL, summary |
+| `image_search` | as `web_search` | title, the image's URL, size and site, the page it is on |
+| `video_search` | as `web_search` | title, duration, publisher, date and views, URL, description |
+| `book_search` | `query` (required); `limit`, `page` | title, authors and year, the book's page |
 | `web_fetch` | `url` (required) | the page's title, URL and text, links as `[text](url)` |
 
 Install the binary first (see [Install](#install)), then add it to your client.
@@ -144,8 +153,8 @@ and most other clients
 }
 ```
 
-The tools then show up as `web_search` and `web_fetch` (Claude Code names them
-`mcp__ratatoskr__web_search` and `mcp__ratatoskr__web_fetch`). Requests are
+The tools then show up under these names (Claude Code prefixes them, as in
+`mcp__ratatoskr__web_search`). Requests are
 answered concurrently, and a failed search or fetch comes back as a tool error
 the model can read, never as a crash. The protocol revisions it speaks are
 `2025-06-18`, `2025-03-26` and `2024-11-05`.
@@ -157,10 +166,13 @@ over any reader and writer.
 ## Command line
 
 ```sh
-ratatoskr search <query> [limit] [country]
+ratatoskr search|news|images|videos|books <query> [limit] [country] [options]
 ratatoskr fetch <url>
 ratatoskr mcp                  # the MCP server, on stdin/stdout
 ```
+
+Options for every search: `--time day|week|month|year`,
+`--safesearch on|moderate|off`, `--page N`, `--country XX`.
 
 ```console
 $ ratatoskr search "tokio select macro" 2
@@ -172,7 +184,15 @@ engine: meta (cached: false)
   https://tokio.rs/tokio/tutorial/select
   The tokio::select! macro allows waiting on multiple async computations and returns when a single…
 
+$ ratatoskr news "raspberry pi 5" 2 --time week
+sources: yahoo, bing (cached: false)
+1. Raspberry Pi 5 price hike means the 16GB model now costs three times what it did...
+   TechRadar · 2026-11-07T23:00:05Z
+   https://tech.yahoo.com/computing/articles/raspberry-pi-5-price-hike-230000118.html
+   …
+
 $ ratatoskr search "cricket scores" 5 IN      # results localized to India
+$ ratatoskr books "dune" 3
 $ ratatoskr fetch https://www.raspberrypi.com/news/
 ```
 
@@ -205,6 +225,26 @@ async fn main() {
     // The same, localized to a country.
     let _ = rt.search_in("weather", 5, Some("GB")).await;
 }
+```
+
+Every option goes in a `SearchRequest`, which the web search and the news,
+images, videos and books searches all take:
+
+```rust
+use ratatoskr::{SafeSearch, SearchRequest, TimeLimit};
+
+let request = SearchRequest::new("raspberry pi 5", 5)
+    .country(Some("GB"))
+    .time(Some(TimeLimit::Week))
+    .safesearch(SafeSearch::Moderate)
+    .page(1);
+
+let web = rt.search_with(&request).await?;     // web pages: SearchOutcome
+let news = rt.news(&request).await?;          // Found<NewsResult>: title, url, body, date, source, image
+let images = rt.images(&request).await?;      // Found<ImageResult>: image, thumbnail, page, size, source
+let videos = rt.videos(&request).await?;      // Found<VideoResult>: url, duration, publisher, views, …
+let books = rt.books(&request).await?;        // Found<BookResult>: authors, year, cover, page
+println!("{}", ratatoskr::format::news(&news.results));  // the numbered text the tools return
 ```
 
 Build a `Ratatoskr` once and share it, for example in an `Arc`. Its rate
@@ -293,8 +333,8 @@ Defaults (`Settings::default()`):
 1. **The meta-search:**
    - Wikipedia and Grokipedia each add the one article whose title matches the
      query, if there is one;
-   - the web engines are asked a few at a time, in a random order: Yahoo and
-     DuckDuckGo (both serve Bing's results, so at most one of them per search)
+   - the web engines are asked a few at a time, in a random order: Yahoo,
+     DuckDuckGo and Bing (all serve Bing's index, so one of them per search)
      and Yandex (its own index);
    - it stops once there are enough distinct results, so a typical search costs
      two web requests, not one per engine;
@@ -306,7 +346,27 @@ Defaults (`Settings::default()`):
 4. **Wikipedia's full-text search.**
 
 If no web engine answers, the meta-search doesn't pass off the encyclopedia
-pages as an answer: the next source gets its turn.
+pages as an answer: the next source gets its turn. A later page or a
+time-limited search leaves the encyclopedias out.
+
+The other searches work the same way, each with its own sources:
+
+| Search | Sources |
+|---|---|
+| news | DuckDuckGo and Bing (Bing's index, one of them per search), Yahoo News |
+| images | Bing; DuckDuckGo when it doesn't ask its proof of work |
+| videos | DuckDuckGo |
+| books | Open Library's official API |
+
+Dates in news results are ISO 8601, worked out from a timestamp or an age such
+as "20 hours ago".
+
+Some engines aren't used:
+- Google Search: it answers every client that doesn't run JavaScript with a
+  page asking to enable it. Use Google's Programmable Search API instead
+  (`GOOGLE_CSE_KEY`, `GOOGLE_CSE_ID`).
+- Brave and Mojeek: their result pages ask for a CAPTCHA.
+- Startpage: it asks for a proof of work.
 
 ## How fetch works
 

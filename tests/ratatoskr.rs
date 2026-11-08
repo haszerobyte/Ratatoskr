@@ -656,3 +656,30 @@ async fn an_external_search_server_answers_as_a_source() {
     assert_eq!(hits[0].url, "https://rust-lang.org/");
     assert_eq!(engine.name(), "search-api");
 }
+
+/// Bing's engine end to end: the options reach Bing's query string, and its
+/// results come back with their click-through links decoded.
+#[tokio::test]
+async fn bing_reads_results_and_sends_the_options() {
+    let site = serve(Router::new().route(
+        "/search",
+        get(|axum::extract::RawQuery(query): axum::extract::RawQuery| async move {
+            let query = query.unwrap_or_default();
+            assert!(
+                query.starts_with("q=raspberry+pi&pq=raspberry+pi&cc=gb&adlt=moderate&filters=ex1%3A%22ez2%22"),
+                "{query}"
+            );
+            ([(header::CONTENT_TYPE, "text/html")], include_str!("fixtures/meta/bing_results.html")).into_response()
+        }),
+    ))
+    .await;
+    let bing = ratatoskr::engine::bing::Bing::with_endpoint(
+        browser::client(Duration::from_secs(5)),
+        &format!("{site}/search"),
+    );
+    let request =
+        ratatoskr::SearchRequest::new("raspberry pi", 3).country(Some("GB")).time(Some(ratatoskr::TimeLimit::Week));
+    let hits = bing.search_request(&request).await.unwrap();
+    assert_eq!(hits.len(), 3);
+    assert_eq!(hits[0].url, "https://www.raspberrypi.com/");
+}

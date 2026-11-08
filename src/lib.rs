@@ -20,6 +20,7 @@
 
 pub mod engine;
 pub mod fetch;
+pub mod format;
 pub mod mcp;
 pub mod polite;
 pub mod request;
