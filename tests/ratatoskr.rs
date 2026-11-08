@@ -10,11 +10,11 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use ratatoskr::engine::duckduckgo::DuckDuckGo;
-use ratatoskr::engine::yahoo::Yahoo;
-use ratatoskr::engine::yandex::Yandex;
 use ratatoskr::engine::google::Google;
 use ratatoskr::engine::grokipedia::Grokipedia;
 use ratatoskr::engine::wikipedia::Wikipedia;
+use ratatoskr::engine::yahoo::Yahoo;
+use ratatoskr::engine::yandex::Yandex;
 use ratatoskr::engine::{Engine, browser, http_client};
 use ratatoskr::fetch::{FetchError, Fetcher};
 use ratatoskr::{Ratatoskr, Settings};
@@ -42,19 +42,29 @@ fn settings() -> Settings {
 
 /// DuckDuckGo that answers with the real anomaly page (202), counting calls.
 async fn refusing_ddg(calls: Arc<AtomicUsize>) -> String {
-    serve(Router::new().route("/html/", post(move || {
-        let calls = calls.clone();
-        async move {
-            calls.fetch_add(1, Ordering::SeqCst);
-            (StatusCode::ACCEPTED, ANOMALY)
-        }
-    }))).await
+    serve(Router::new().route(
+        "/html/",
+        post(move || {
+            let calls = calls.clone();
+            async move {
+                calls.fetch_add(1, Ordering::SeqCst);
+                (StatusCode::ACCEPTED, ANOMALY)
+            }
+        }),
+    ))
+    .await
 }
 
 async fn wikipedia() -> String {
-    serve(Router::new().route("/w/api.php", get(|| async {
-        axum::Json(json!({"query": {"search": [{"title": "Rust (programming language)", "snippet": "a language"}]}}))
-    }))).await
+    serve(Router::new().route(
+        "/w/api.php",
+        get(|| async {
+            axum::Json(
+                json!({"query": {"search": [{"title": "Rust (programming language)", "snippet": "a language"}]}}),
+            )
+        }),
+    ))
+    .await
 }
 
 #[tokio::test]
@@ -113,17 +123,23 @@ async fn website() -> String {
     let page = "<html><head><title>Ferris</title></head><body><nav>menu</nav>\
                 <article><h2>About</h2><p>Ferris is the <em>crab</em>.</p></article></body></html>";
     let big = "x".repeat(3 * 1024 * 1024);
-    serve(Router::new()
-        // Cricbuzz's: every agent but Googlebot disallowed.
-        .route("/robots.txt", get(|| async { "User-agent: Googlebot\nAllow: /\n\nUser-agent: *\nDisallow: /\n" }))
-        .route("/page", get(move || async move { ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], page) }))
-        .route("/user-agent", get(|headers: HeaderMap| async move {
-            headers.get(header::USER_AGENT).and_then(|v| v.to_str().ok()).unwrap_or("").to_string()
-        }))
-        .route("/data.json", get(|| async { ([(header::CONTENT_TYPE, "application/json")], r#"{"a":1}"#) }))
-        .route("/image.png", get(|| async { ([(header::CONTENT_TYPE, "image/png")], "\u{89}PNG") }))
-        .route("/huge", get(move || async move { ([(header::CONTENT_TYPE, "text/plain")], big.clone()) }))
-        .route("/missing", get(|| async { StatusCode::NOT_FOUND.into_response() }))).await
+    serve(
+        Router::new()
+            // Cricbuzz's: every agent but Googlebot disallowed.
+            .route("/robots.txt", get(|| async { "User-agent: Googlebot\nAllow: /\n\nUser-agent: *\nDisallow: /\n" }))
+            .route("/page", get(move || async move { ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], page) }))
+            .route(
+                "/user-agent",
+                get(|headers: HeaderMap| async move {
+                    headers.get(header::USER_AGENT).and_then(|v| v.to_str().ok()).unwrap_or("").to_string()
+                }),
+            )
+            .route("/data.json", get(|| async { ([(header::CONTENT_TYPE, "application/json")], r#"{"a":1}"#) }))
+            .route("/image.png", get(|| async { ([(header::CONTENT_TYPE, "image/png")], "\u{89}PNG") }))
+            .route("/huge", get(move || async move { ([(header::CONTENT_TYPE, "text/plain")], big.clone()) }))
+            .route("/missing", get(|| async { StatusCode::NOT_FOUND.into_response() })),
+    )
+    .await
 }
 
 #[tokio::test]
@@ -158,16 +174,24 @@ async fn a_page_robots_txt_disallows_is_still_read() {
 #[tokio::test]
 async fn a_fetch_presents_as_chrome() {
     let site = website().await;
-    let agent = Fetcher::allowing_private_for_tests(Duration::from_secs(5)).fetch(&format!("{site}/user-agent")).await.unwrap().text;
+    let agent = Fetcher::allowing_private_for_tests(Duration::from_secs(5))
+        .fetch(&format!("{site}/user-agent"))
+        .await
+        .unwrap()
+        .text;
     assert!(agent.contains("Chrome/") && agent.contains("Linux") && !agent.contains("Ratatoskr"), "{agent}");
 }
 
 #[tokio::test]
 async fn grokipedia_answers_its_one_page_from_the_typeahead() {
-    let site = serve(Router::new().route("/api/typeahead", get(|axum::extract::RawQuery(query): axum::extract::RawQuery| async move {
-        assert_eq!(query.as_deref(), Some("query=raspberry+pi&limit=1"));
-        ([(header::CONTENT_TYPE, "application/json")], include_str!("fixtures/meta/grokipedia_typeahead.json"))
-    }))).await;
+    let site = serve(Router::new().route(
+        "/api/typeahead",
+        get(|axum::extract::RawQuery(query): axum::extract::RawQuery| async move {
+            assert_eq!(query.as_deref(), Some("query=raspberry+pi&limit=1"));
+            ([(header::CONTENT_TYPE, "application/json")], include_str!("fixtures/meta/grokipedia_typeahead.json"))
+        }),
+    ))
+    .await;
     let engine = Grokipedia::with_endpoint(http_client(Duration::from_secs(5)), &format!("{site}/api/typeahead"));
     let hits = engine.search("raspberry pi", 1).await.unwrap();
     assert_eq!(hits[0].url, "https://grokipedia.com/page/Raspberry_Pi_OS");
@@ -180,15 +204,29 @@ async fn grokipedia_answers_its_one_page_from_the_typeahead() {
 async fn a_short_429_is_waited_out_once() {
     let calls = Arc::new(AtomicUsize::new(0));
     let counted = calls.clone();
-    let site = serve(Router::new()
-        .route("/busy", get(move || {
-            let n = counted.fetch_add(1, Ordering::SeqCst);
-            async move {
-                if n == 0 { (StatusCode::TOO_MANY_REQUESTS, [(header::RETRY_AFTER, "1")], "slow down").into_response() }
-                else { ([(header::CONTENT_TYPE, "text/plain")], "here").into_response() }
-            }
-        }))
-        .route("/long", get(|| async { (StatusCode::TOO_MANY_REQUESTS, [(header::RETRY_AFTER, "3600")], "later").into_response() }))).await;
+    let site = serve(
+        Router::new()
+            .route(
+                "/busy",
+                get(move || {
+                    let n = counted.fetch_add(1, Ordering::SeqCst);
+                    async move {
+                        if n == 0 {
+                            (StatusCode::TOO_MANY_REQUESTS, [(header::RETRY_AFTER, "1")], "slow down").into_response()
+                        } else {
+                            ([(header::CONTENT_TYPE, "text/plain")], "here").into_response()
+                        }
+                    }
+                }),
+            )
+            .route(
+                "/long",
+                get(|| async {
+                    (StatusCode::TOO_MANY_REQUESTS, [(header::RETRY_AFTER, "3600")], "later").into_response()
+                }),
+            ),
+    )
+    .await;
     let fetcher = Fetcher::allowing_private_for_tests(Duration::from_secs(5));
     let started = std::time::Instant::now();
     assert_eq!(fetcher.fetch(&format!("{site}/busy")).await.unwrap().text, "here");
@@ -201,10 +239,17 @@ async fn a_short_429_is_waited_out_once() {
 
 #[tokio::test]
 async fn redirects_are_followed_up_to_five() {
-    let site = serve(Router::new()
-        .route("/hop/{n}", get(|axum::extract::Path(n): axum::extract::Path<u32>| async move {
-            if n == 0 { "landed".into_response() } else { axum::response::Redirect::temporary(&format!("/hop/{}", n - 1)).into_response() }
-        }))).await;
+    let site = serve(Router::new().route(
+        "/hop/{n}",
+        get(|axum::extract::Path(n): axum::extract::Path<u32>| async move {
+            if n == 0 {
+                "landed".into_response()
+            } else {
+                axum::response::Redirect::temporary(&format!("/hop/{}", n - 1)).into_response()
+            }
+        }),
+    ))
+    .await;
     let fetcher = Fetcher::allowing_private_for_tests(Duration::from_secs(5));
     let page = fetcher.fetch(&format!("{site}/hop/5")).await.unwrap();
     assert_eq!((page.text.as_str(), page.url.ends_with("/hop/0")), ("landed", true));
@@ -246,8 +291,10 @@ async fn an_engine_failure_never_carries_its_api_key() {
 #[ignore]
 async fn show_live_fingerprint() {
     use browser::{BrowserPlatform, BrowserProfile};
-    for (name, profile, platform) in [("chrome", BrowserProfile::Chrome149, BrowserPlatform::Linux),
-                                      ("firefox", BrowserProfile::Firefox151, BrowserPlatform::Windows)] {
+    for (name, profile, platform) in [
+        ("chrome", BrowserProfile::Chrome149, BrowserPlatform::Linux),
+        ("firefox", BrowserProfile::Firefox151, BrowserPlatform::Windows),
+    ] {
         let http = browser::builder(profile, platform).build().unwrap();
         let text = http.get("https://tls.peet.ws/api/all").send().await.unwrap().text().await.unwrap();
         println!("FINGERPRINT {name}:\n{text}\nEND");
@@ -258,28 +305,64 @@ async fn show_live_fingerprint() {
 /// header order all told a bot check this was not Chrome.
 #[tokio::test]
 async fn a_fetch_sends_chromes_navigation_headers_in_chromes_order() {
-    let site = serve(Router::new().route("/h", get(|headers: HeaderMap| async move {
-        headers.iter().map(|(k, v)| format!("{k}: {}", v.to_str().unwrap_or("?"))).collect::<Vec<_>>().join("\n")
-    }))).await;
-    let sent = Fetcher::allowing_private_for_tests(Duration::from_secs(5)).fetch(&format!("{site}/h")).await.unwrap().text;
-    let names: Vec<&str> = sent.lines().filter_map(|l| l.split_once(": ").map(|(k, _)| k)).filter(|k| *k != "host").collect();
-    assert_eq!(names, ["sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform", "upgrade-insecure-requests", "user-agent",
-                       "accept", "sec-fetch-site", "sec-fetch-mode", "sec-fetch-user", "sec-fetch-dest",
-                       "accept-encoding", "accept-language", "priority"], "{sent}");
+    let site = serve(Router::new().route(
+        "/h",
+        get(|headers: HeaderMap| async move {
+            headers.iter().map(|(k, v)| format!("{k}: {}", v.to_str().unwrap_or("?"))).collect::<Vec<_>>().join("\n")
+        }),
+    ))
+    .await;
+    let sent =
+        Fetcher::allowing_private_for_tests(Duration::from_secs(5)).fetch(&format!("{site}/h")).await.unwrap().text;
+    let names: Vec<&str> =
+        sent.lines().filter_map(|l| l.split_once(": ").map(|(k, _)| k)).filter(|k| *k != "host").collect();
+    assert_eq!(
+        names,
+        [
+            "sec-ch-ua",
+            "sec-ch-ua-mobile",
+            "sec-ch-ua-platform",
+            "upgrade-insecure-requests",
+            "user-agent",
+            "accept",
+            "sec-fetch-site",
+            "sec-fetch-mode",
+            "sec-fetch-user",
+            "sec-fetch-dest",
+            "accept-encoding",
+            "accept-language",
+            "priority"
+        ],
+        "{sent}"
+    );
     assert!(sent.contains("accept-encoding: gzip, deflate, br, zstd"), "{sent}");
 }
 
 /// Without a jar, a set-cookie-and-redirect gate refused every fetch.
 #[tokio::test]
 async fn a_cookie_set_on_the_way_is_sent_back_within_that_fetch_only() {
-    let site = serve(Router::new()
-        .route("/gate", get(|| async {
-            ([(header::SET_COOKIE, "gate=passed; Path=/"), (header::LOCATION, "/inside")], StatusCode::FOUND).into_response()
-        }))
-        .route("/inside", get(|headers: HeaderMap| async move {
-            let cookie = headers.get(header::COOKIE).and_then(|v| v.to_str().ok()).unwrap_or("");
-            if cookie.contains("gate=passed") { "welcome".into_response() } else { StatusCode::NOT_FOUND.into_response() }
-        }))).await;
+    let site = serve(
+        Router::new()
+            .route(
+                "/gate",
+                get(|| async {
+                    ([(header::SET_COOKIE, "gate=passed; Path=/"), (header::LOCATION, "/inside")], StatusCode::FOUND)
+                        .into_response()
+                }),
+            )
+            .route(
+                "/inside",
+                get(|headers: HeaderMap| async move {
+                    let cookie = headers.get(header::COOKIE).and_then(|v| v.to_str().ok()).unwrap_or("");
+                    if cookie.contains("gate=passed") {
+                        "welcome".into_response()
+                    } else {
+                        StatusCode::NOT_FOUND.into_response()
+                    }
+                }),
+            ),
+    )
+    .await;
     let fetcher = Fetcher::allowing_private_for_tests(Duration::from_secs(5));
     assert_eq!(fetcher.fetch(&format!("{site}/gate")).await.unwrap().text, "welcome");
     assert_eq!(fetcher.fetch(&format!("{site}/inside")).await, Err(FetchError::Http(404)));
@@ -290,22 +373,42 @@ async fn a_cookie_set_on_the_way_is_sent_back_within_that_fetch_only() {
 async fn refusals_are_retried_once_as_firefox_and_challenges_are_named() {
     let hits = Arc::new(AtomicUsize::new(0));
     let (h1, h2, h3) = (hits.clone(), hits.clone(), hits.clone());
-    let site = serve(Router::new()
-        .route("/picky", get(move |headers: HeaderMap| {
-            h1.fetch_add(1, Ordering::SeqCst);
-            async move {
-                let agent = headers.get(header::USER_AGENT).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
-                if agent.contains("Firefox/") { "read".into_response() } else { StatusCode::FORBIDDEN.into_response() }
-            }
-        }))
-        .route("/challenge", get(move || {
-            h2.fetch_add(1, Ordering::SeqCst);
-            async { (StatusCode::FORBIDDEN, [("cf-mitigated", "challenge")], "<title>Just a moment...</title>").into_response() }
-        }))
-        .route("/gone", get(move || {
-            h3.fetch_add(1, Ordering::SeqCst);
-            async { StatusCode::NOT_FOUND.into_response() }
-        }))).await;
+    let site = serve(
+        Router::new()
+            .route(
+                "/picky",
+                get(move |headers: HeaderMap| {
+                    h1.fetch_add(1, Ordering::SeqCst);
+                    async move {
+                        let agent =
+                            headers.get(header::USER_AGENT).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+                        if agent.contains("Firefox/") {
+                            "read".into_response()
+                        } else {
+                            StatusCode::FORBIDDEN.into_response()
+                        }
+                    }
+                }),
+            )
+            .route(
+                "/challenge",
+                get(move || {
+                    h2.fetch_add(1, Ordering::SeqCst);
+                    async {
+                        (StatusCode::FORBIDDEN, [("cf-mitigated", "challenge")], "<title>Just a moment...</title>")
+                            .into_response()
+                    }
+                }),
+            )
+            .route(
+                "/gone",
+                get(move || {
+                    h3.fetch_add(1, Ordering::SeqCst);
+                    async { StatusCode::NOT_FOUND.into_response() }
+                }),
+            ),
+    )
+    .await;
     let fetcher = Fetcher::allowing_private_for_tests(Duration::from_secs(5));
 
     assert_eq!(fetcher.fetch(&format!("{site}/picky")).await.unwrap().text, "read");
@@ -323,25 +426,42 @@ async fn refusals_are_retried_once_as_firefox_and_challenges_are_named() {
 /// The engines sent a browser User-Agent over rustls, which no browser uses.
 #[tokio::test]
 async fn an_engine_client_is_one_consistent_browser() {
-    let site = serve(Router::new().route("/h", get(|headers: HeaderMap| async move {
-        let get = |n: &str| headers.get(n).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
-        format!("{}\n{}\n{}", get("user-agent"), get("sec-ch-ua-platform"), get("sec-fetch-user"))
-    }))).await;
+    let site = serve(Router::new().route(
+        "/h",
+        get(|headers: HeaderMap| async move {
+            let get = |n: &str| headers.get(n).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+            format!("{}\n{}\n{}", get("user-agent"), get("sec-ch-ua-platform"), get("sec-fetch-user"))
+        }),
+    ))
+    .await;
     for _ in 0..12 {
-        let text = browser::client(Duration::from_secs(5)).get(format!("{site}/h")).send().await.unwrap().text().await.unwrap();
+        let text = browser::client(Duration::from_secs(5))
+            .get(format!("{site}/h"))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
         let mut lines = text.lines();
-        let (agent, platform, fetch_user) = (lines.next().unwrap(), lines.next().unwrap_or(""), lines.next().unwrap_or(""));
+        let (agent, platform, fetch_user) =
+            (lines.next().unwrap(), lines.next().unwrap_or(""), lines.next().unwrap_or(""));
         assert!(!agent.contains("Ratatoskr") && agent.starts_with("Mozilla/5.0"), "{agent}");
         assert_eq!(fetch_user, "?1", "{text}");
         if agent.contains("Firefox/") {
             assert_eq!(platform, "", "Firefox sends no client hints: {text}");
         } else {
-            let os = if agent.contains("Windows") { "\"Windows\"" } else if agent.contains("Macintosh") { "\"macOS\"" } else { "\"Linux\"" };
+            let os = if agent.contains("Windows") {
+                "\"Windows\""
+            } else if agent.contains("Macintosh") {
+                "\"macOS\""
+            } else {
+                "\"Linux\""
+            };
             assert_eq!(platform, os, "client hints agree with the User-Agent: {text}");
         }
     }
 }
-
 
 /// A one-page PDF saying `text`, with a correct cross-reference table.
 fn pdf(text: &str) -> Vec<u8> {
@@ -376,10 +496,13 @@ async fn pdfs_come_back_whole_with_their_text() {
     let served = paper.clone();
     let big = vec![b'x'; ratatoskr::fetch::MAX_PDF + 1];
     let pdf_type = || [(header::CONTENT_TYPE, "application/pdf")];
-    let site = serve(Router::new()
-        .route("/paper.pdf", get(move || async move { (pdf_type(), served.clone()) }))
-        .route("/broken.pdf", get(move || async move { (pdf_type(), "%PDF-1.4 not really") }))
-        .route("/huge.pdf", get(move || async move { (pdf_type(), big.clone()) }))).await;
+    let site = serve(
+        Router::new()
+            .route("/paper.pdf", get(move || async move { (pdf_type(), served.clone()) }))
+            .route("/broken.pdf", get(move || async move { (pdf_type(), "%PDF-1.4 not really") }))
+            .route("/huge.pdf", get(move || async move { (pdf_type(), big.clone()) })),
+    )
+    .await;
     let fetcher = Fetcher::allowing_private_for_tests(Duration::from_secs(10));
 
     let page = fetcher.fetch(&format!("{site}/paper.pdf")).await.unwrap();
@@ -399,24 +522,43 @@ async fn searches_look_like_the_sites_own_search_box_and_carry_the_country() {
     let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
     let (ddg_seen, yahoo_seen) = (seen.clone(), seen.clone());
     let yahoo_page = include_str!("fixtures/meta/yahoo_results.html");
-    let site = serve(Router::new()
-        .route("/html/", post(move |headers: HeaderMap, body: String| {
-            let seen = ddg_seen.clone();
-            async move {
-                let get = |n: &str| headers.get(n).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
-                seen.lock().unwrap().push(format!("ddg {} {} {} {} {body}", get("origin"), get("referer"), get("sec-fetch-site"),
-                                                  get("accept-language")));
-                RESULTS
-            }
-        }))
-        .route("/{*rest}", get(move |headers: HeaderMap| {
-            let seen = yahoo_seen.clone();
-            async move {
-                let get = |n: &str| headers.get(n).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
-                seen.lock().unwrap().push(format!("yahoo {} {} {}", get("origin"), get("referer"), get("sec-fetch-site")));
-                yahoo_page
-            }
-        }))).await;
+    let site = serve(
+        Router::new()
+            .route(
+                "/html/",
+                post(move |headers: HeaderMap, body: String| {
+                    let seen = ddg_seen.clone();
+                    async move {
+                        let get = |n: &str| headers.get(n).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+                        seen.lock().unwrap().push(format!(
+                            "ddg {} {} {} {} {body}",
+                            get("origin"),
+                            get("referer"),
+                            get("sec-fetch-site"),
+                            get("accept-language")
+                        ));
+                        RESULTS
+                    }
+                }),
+            )
+            .route(
+                "/{*rest}",
+                get(move |headers: HeaderMap| {
+                    let seen = yahoo_seen.clone();
+                    async move {
+                        let get = |n: &str| headers.get(n).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+                        seen.lock().unwrap().push(format!(
+                            "yahoo {} {} {}",
+                            get("origin"),
+                            get("referer"),
+                            get("sec-fetch-site")
+                        ));
+                        yahoo_page
+                    }
+                }),
+            ),
+    )
+    .await;
     let ddg = DuckDuckGo::with_endpoint(browser::client(Duration::from_secs(5)), &format!("{site}/html/"));
     assert!(!ddg.search_in("rust", 3, Some("IN")).await.unwrap().is_empty());
     let yahoo = Yahoo::with_base(browser::client(Duration::from_secs(5)), &site);
@@ -433,15 +575,30 @@ async fn searches_look_like_the_sites_own_search_box_and_carry_the_country() {
 /// vendor's challenge (here Cloudflare's, by its header) is a refusal.
 #[tokio::test]
 async fn yandex_reads_results_and_refuses_a_challenge() {
-    let site = serve(Router::new()
-        .route("/search/site/", get(|axum::extract::RawQuery(query): axum::extract::RawQuery| async move {
-            let query = query.unwrap_or_default();
-            assert!(query.starts_with("text=raspberry+pi&web=1&searchid="), "{query}");
-            ([(header::CONTENT_TYPE, "text/html")], include_str!("fixtures/meta/yandex_results.html")).into_response()
-        }))
-        .route("/blocked/", get(|| async {
-            (StatusCode::FORBIDDEN, [("cf-mitigated", "challenge")], "<html><title>Just a moment...</title></html>").into_response()
-        }))).await;
+    let site = serve(
+        Router::new()
+            .route(
+                "/search/site/",
+                get(|axum::extract::RawQuery(query): axum::extract::RawQuery| async move {
+                    let query = query.unwrap_or_default();
+                    assert!(query.starts_with("text=raspberry+pi&web=1&searchid="), "{query}");
+                    ([(header::CONTENT_TYPE, "text/html")], include_str!("fixtures/meta/yandex_results.html"))
+                        .into_response()
+                }),
+            )
+            .route(
+                "/blocked/",
+                get(|| async {
+                    (
+                        StatusCode::FORBIDDEN,
+                        [("cf-mitigated", "challenge")],
+                        "<html><title>Just a moment...</title></html>",
+                    )
+                        .into_response()
+                }),
+            ),
+    )
+    .await;
     let yandex = Yandex::with_endpoint(browser::client(Duration::from_secs(5)), &format!("{site}/search/site/"));
     let hits = yandex.search("raspberry pi", 3).await.unwrap();
     assert_eq!(hits.len(), 3);
@@ -449,4 +606,34 @@ async fn yandex_reads_results_and_refuses_a_challenge() {
     let blocked = Yandex::with_endpoint(browser::client(Duration::from_secs(5)), &format!("{site}/blocked/"));
     let error = blocked.search("raspberry pi", 3).await.unwrap_err();
     assert!(error.is_refusal() && error.to_string().contains("Cloudflare"), "{error}");
+}
+
+/// Regression: the meta-search's Wikipedia page came from full-text search, so
+/// "tokio select macro" was answered first with an artist's biography that
+/// mentions Tokio. The best page is a title match, with its intro, or nothing.
+#[tokio::test]
+async fn wikipedias_best_page_is_a_title_match_or_nothing() {
+    let site = serve(Router::new().route(
+        "/w/api.php",
+        get(|axum::extract::Query(q): axum::extract::Query<std::collections::HashMap<String, String>>| async move {
+            let body = match (q.get("action").map(String::as_str), q.get("search").or(q.get("titles")).map(String::as_str)) {
+                (Some("opensearch"), Some("raspberry pi os")) => {
+                    json!(["raspberry pi os", ["Raspberry Pi OS"], [""], ["https://en.wikipedia.org/wiki/Raspberry_Pi_OS"]])
+                }
+                (Some("opensearch"), Some(other)) => json!([other, [], [], []]),
+                (Some("query"), Some("Raspberry Pi OS")) => {
+                    json!({"query": {"pages": [{"title": "Raspberry Pi OS", "extract": "Raspberry Pi OS is an operating system."}]}})
+                }
+                _ => json!({}),
+            };
+            axum::Json(body)
+        }),
+    ))
+    .await;
+    let engine = Wikipedia::best_page_with_api(http_client(Duration::from_secs(5)), &format!("{site}/w/api.php"));
+    let hits = engine.search("raspberry pi os", 5).await.unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].url, "https://en.wikipedia.org/wiki/Raspberry_Pi_OS");
+    assert_eq!(hits[0].snippet, "Raspberry Pi OS is an operating system.");
+    assert_eq!(engine.search("tokio select macro", 5).await.unwrap(), vec![]);
 }

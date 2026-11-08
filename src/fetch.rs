@@ -157,8 +157,12 @@ fn check_url(url: &url::Url, allow_private: bool) -> Result<(), FetchError> {
     }
     match url.host() {
         None => Err(FetchError::BadUrl("no host".into())),
-        Some(url::Host::Ipv4(ip)) if !allow_private && !is_public(IpAddr::V4(ip)) => Err(FetchError::Blocked(ip.to_string())),
-        Some(url::Host::Ipv6(ip)) if !allow_private && !is_public(IpAddr::V6(ip)) => Err(FetchError::Blocked(ip.to_string())),
+        Some(url::Host::Ipv4(ip)) if !allow_private && !is_public(IpAddr::V4(ip)) => {
+            Err(FetchError::Blocked(ip.to_string()))
+        }
+        Some(url::Host::Ipv6(ip)) if !allow_private && !is_public(IpAddr::V6(ip)) => {
+            Err(FetchError::Blocked(ip.to_string()))
+        }
         Some(url::Host::Domain(d)) if !allow_private && (d == "localhost" || d.ends_with(".localhost")) => {
             Err(FetchError::Blocked(d.to_string()))
         }
@@ -195,7 +199,8 @@ impl Fetcher {
             if attempt.previous.len() > MAX_REDIRECTS {
                 return attempt.error("too many redirects");
             }
-            match url::Url::parse(&attempt.uri.to_string()).map_err(|e| FetchError::BadUrl(e.to_string()))
+            match url::Url::parse(&attempt.uri.to_string())
+                .map_err(|e| FetchError::BadUrl(e.to_string()))
                 .and_then(|url| check_url(&url, allow_private))
             {
                 Ok(()) => attempt.follow(),
@@ -205,10 +210,8 @@ impl Fetcher {
         let client = |profile, platform| {
             // No HTTP(S)_PROXY from the environment: a proxy resolves the host
             // itself, so PublicOnly would never see the address it connects to.
-            let mut builder = browser::builder(profile, platform)
-                .timeout(timeout)
-                .redirect(redirects.clone())
-                .no_proxy();
+            let mut builder =
+                browser::builder(profile, platform).timeout(timeout).redirect(redirects.clone()).no_proxy();
             if !allow_private {
                 builder = builder.dns_resolver(Arc::new(PublicOnly));
             }
@@ -236,7 +239,9 @@ impl Fetcher {
                     Err(_) => Err(first),
                 }
             }
-            Err(Failed { error: FetchError::Http(429), retry_after }) if retry_after.is_none_or(|wait| wait > MAX_RETRY_AFTER) => {
+            Err(Failed { error: FetchError::Http(429), retry_after })
+                if retry_after.is_none_or(|wait| wait > MAX_RETRY_AFTER) =>
+            {
                 tracing::info!("ratatoskr fetch {url}: 429 asking to wait {retry_after:?}; not waiting");
                 Err(FetchError::Http(429))
             }
@@ -250,7 +255,8 @@ impl Fetcher {
     }
 
     async fn attempt(&self, http: &wreq::Client, url: &url::Url, jar: &Arc<wreq::cookie::Jar>) -> Result<Page, Failed> {
-        let reply = http.get(url.as_str()).cookie_provider(jar.clone()).send().await.map_err(|e| transport_or_blocked(&e))?;
+        let reply =
+            http.get(url.as_str()).cookie_provider(jar.clone()).send().await.map_err(|e| transport_or_blocked(&e))?;
         let status = reply.status();
         let headers = reply.headers().clone();
         if !status.is_success() {
@@ -411,11 +417,33 @@ mod tests {
 
     #[test]
     fn only_public_unicast_is_public() {
-        for ip in ["127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.0.10", "169.254.169.254", "100.64.0.1",
-                   "0.0.0.0", "255.255.255.255", "224.0.0.1", "192.0.2.1", "198.18.0.1", "240.0.0.1"] {
+        for ip in [
+            "127.0.0.1",
+            "10.1.2.3",
+            "172.16.0.1",
+            "192.168.0.10",
+            "169.254.169.254",
+            "100.64.0.1",
+            "0.0.0.0",
+            "255.255.255.255",
+            "224.0.0.1",
+            "192.0.2.1",
+            "198.18.0.1",
+            "240.0.0.1",
+        ] {
             assert!(!is_public(ip.parse::<Ipv4Addr>().unwrap().into()), "{ip}");
         }
-        for ip in ["::1", "::", "fc00::1", "fd12::1", "fe80::1", "ff02::1", "2001:db8::1", "::ffff:127.0.0.1", "64:ff9b::a00:1"] {
+        for ip in [
+            "::1",
+            "::",
+            "fc00::1",
+            "fd12::1",
+            "fe80::1",
+            "ff02::1",
+            "2001:db8::1",
+            "::ffff:127.0.0.1",
+            "64:ff9b::a00:1",
+        ] {
             assert!(!is_public(ip.parse::<Ipv6Addr>().unwrap().into()), "{ip}");
         }
         for ip in ["1.1.1.1", "151.101.128.223"] {
@@ -433,10 +461,14 @@ mod tests {
         assert_eq!(challenge_vendor(403, &cf, ""), Some("Cloudflare"));
         let moment = "<html><head><title>Just a moment...</title></head></html>";
         assert_eq!(challenge_vendor(200, &none, moment), Some("Cloudflare"));
-        assert_eq!(challenge_vendor(403, &none, r#"<script src="https://geo.captcha-delivery.com/x.js">"#), Some("DataDome"));
+        assert_eq!(
+            challenge_vendor(403, &none, r#"<script src="https://geo.captcha-delivery.com/x.js">"#),
+            Some("DataDome")
+        );
         assert_eq!(challenge_vendor(403, &none, "<p>Please verify you are human</p>"), Some("unknown vendor"));
         assert_eq!(challenge_vendor(200, &none, "<title>How CAPTCHA works</title><p>captcha</p>"), None);
-        let protected = format!("<script src=\"/_Incapsula_Resource?SWJIYLWA=1\"></script>{}", "<p>text</p>".repeat(3000));
+        let protected =
+            format!("<script src=\"/_Incapsula_Resource?SWJIYLWA=1\"></script>{}", "<p>text</p>".repeat(3000));
         assert_eq!(challenge_vendor(200, &none, &protected), None);
         assert_eq!(challenge_vendor(404, &none, "<title>Not found</title>"), None);
     }
@@ -444,10 +476,15 @@ mod tests {
     #[tokio::test]
     async fn local_and_odd_targets_are_refused_before_any_request() {
         let fetcher = Fetcher::new(Duration::from_secs(5));
-        for (url, blocked) in [("http://127.0.0.1:8080/admin", true), ("http://192.168.0.10:8080/stats", true),
-                               ("http://[::1]/", true), ("http://localhost:3000/", true),
-                               ("http://169.254.169.254/latest/meta-data", true),
-                               ("file:///etc/passwd", false), ("ftp://example.com/", false)] {
+        for (url, blocked) in [
+            ("http://127.0.0.1:8080/admin", true),
+            ("http://192.168.0.10:8080/stats", true),
+            ("http://[::1]/", true),
+            ("http://localhost:3000/", true),
+            ("http://169.254.169.254/latest/meta-data", true),
+            ("file:///etc/passwd", false),
+            ("ftp://example.com/", false),
+        ] {
             let error = fetcher.fetch(url).await.unwrap_err();
             if blocked {
                 assert!(matches!(error, FetchError::Blocked(_)), "{url}: {error:?}");

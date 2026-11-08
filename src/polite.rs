@@ -125,7 +125,11 @@ mod tests {
             limiter.wait_turn().await;
         }
         assert!(started.elapsed() >= Duration::from_millis(200), "{:?}", started.elapsed());
-        assert!(started.elapsed() < Duration::from_millis(400), "jitter is at most half again: {:?}", started.elapsed());
+        assert!(
+            started.elapsed() < Duration::from_millis(400),
+            "jitter is at most half again: {:?}",
+            started.elapsed()
+        );
     }
 
     #[test]

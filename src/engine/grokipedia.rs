@@ -48,7 +48,8 @@ impl Engine for Grokipedia {
 /// Hits from a typeahead answer: the page at `/page/<slug>`, the snippet's
 /// first paragraph dropped when there are more (ddgs: it repeats the title).
 pub fn parse(body: &Value, limit: usize) -> Result<Vec<Hit>, EngineError> {
-    let results = body.get("results").and_then(Value::as_array).ok_or_else(|| EngineError::Parse("no results field".into()))?;
+    let results =
+        body.get("results").and_then(Value::as_array).ok_or_else(|| EngineError::Parse("no results field".into()))?;
     Ok(results
         .iter()
         .filter_map(|item| {
@@ -70,7 +71,8 @@ mod tests {
 
     #[test]
     fn a_real_answer_parses() {
-        let body: Value = serde_json::from_str(include_str!("../../tests/fixtures/meta/grokipedia_typeahead.json")).unwrap();
+        let body: Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/meta/grokipedia_typeahead.json")).unwrap();
         let hits = parse(&body, 5).unwrap();
         assert_eq!(hits[0].url, "https://grokipedia.com/page/Raspberry_Pi_OS");
         assert_eq!(hits[0].title, "Raspberry Pi OS");

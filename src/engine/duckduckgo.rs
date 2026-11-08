@@ -50,7 +50,8 @@ impl Engine for DuckDuckGo {
             if let Some(language) = country.and_then(|c| browser::accept_language(c, family)) {
                 form = form.header("accept-language", language);
             }
-            let request = browser::same_site(form, &self.endpoint).form(&[("q", query), ("b", ""), ("l", region(country))]);
+            let request =
+                browser::same_site(form, &self.endpoint).form(&[("q", query), ("b", ""), ("l", region(country))]);
             let body = browser::read_page(request, "result__a").await?;
             parse(&body, limit)
         })
@@ -117,7 +118,6 @@ fn real_url(href: &str) -> Option<String> {
     matches!(parsed.scheme(), "http" | "https").then(|| parsed.to_string())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,11 +129,14 @@ mod tests {
     fn a_real_results_page_parses() {
         let hits = parse(RESULTS, 10).unwrap();
         assert_eq!(hits.len(), 10);
-        assert_eq!(hits[0], Hit {
-            title: "Rust Programming Language".into(),
-            url: "https://rust-lang.org/".into(),
-            snippet: "A language empowering everyone to build reliable and efficient software.".into(),
-        });
+        assert_eq!(
+            hits[0],
+            Hit {
+                title: "Rust Programming Language".into(),
+                url: "https://rust-lang.org/".into(),
+                snippet: "A language empowering everyone to build reliable and efficient software.".into(),
+            }
+        );
         assert!(hits.iter().all(|h| h.url.starts_with("http")));
         assert_eq!(parse(RESULTS, 3).unwrap().len(), 3);
     }
@@ -164,8 +167,10 @@ mod tests {
 
     #[test]
     fn redirects_are_unwrapped_and_odd_links_dropped() {
-        assert_eq!(real_url("//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa%3Fb%3D1&rut=x").as_deref(),
-                   Some("https://example.com/a?b=1"));
+        assert_eq!(
+            real_url("//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa%3Fb%3D1&rut=x").as_deref(),
+            Some("https://example.com/a?b=1")
+        );
         assert_eq!(real_url("javascript:alert(1)"), None);
         assert_eq!(real_url("https://example.org/x").as_deref(), Some("https://example.org/x"));
     }

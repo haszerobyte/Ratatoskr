@@ -20,7 +20,10 @@ impl Yahoo {
         Self { sessions: browser::Sessions::Fresh(timeout), base: "https://search.yahoo.com".into() }
     }
     pub fn with_base(http: wreq::Client, base: &str) -> Self {
-        Self { sessions: browser::Sessions::Fixed(http, browser::Family::Chromium), base: base.trim_end_matches('/').to_string() }
+        Self {
+            sessions: browser::Sessions::Fixed(http, browser::Family::Chromium),
+            base: base.trim_end_matches('/').to_string(),
+        }
     }
 }
 

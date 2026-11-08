@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    name: fmt and clippy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build tools (BoringSSL needs cmake and libclang)
+        run: sudo apt-get update && sudo apt-get install -y cmake clang libclang-dev
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup toolchain install && rustup show active-toolchain
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+
+  test:
+    name: test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    # Windows is built and tested, but not yet required: BoringSSL's Windows
+    # build (wreq's TLS) has not been verified on this crate.
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux x86_64, os: ubuntu-24.04, experimental: false }
+          - { name: linux aarch64, os: ubuntu-24.04-arm, experimental: false }
+          - { name: macos aarch64, os: macos-15, experimental: false }
+          - { name: macos x86_64, os: macos-13, experimental: false }
+          - { name: windows x86_64, os: windows-2025, experimental: true }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake clang libclang-dev
+      - name: Build tools (macOS)
+        if: runner.os == 'macOS'
+        run: command -v cmake || brew install cmake
+      - name: Build tools (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install nasm -y --no-progress
+          "C:\Program Files\NASM" | Out-File -FilePath $env:GITHUB_PATH -Append
+          "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup toolchain install && rustup show active-toolchain
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --locked --all-targets
+      - run: cargo test --locked

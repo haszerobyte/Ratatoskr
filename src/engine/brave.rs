@@ -63,7 +63,11 @@ pub fn parse(body: &Value) -> Vec<Hit> {
                         title: item.get("title")?.as_str()?.to_string(),
                         url: item.get("url")?.as_str()?.to_string(),
                         // Descriptions carry <strong> highlighting.
-                        snippet: item.get("description").and_then(Value::as_str).map(crate::text::fragment_text).unwrap_or_default(),
+                        snippet: item
+                            .get("description")
+                            .and_then(Value::as_str)
+                            .map(crate::text::fragment_text)
+                            .unwrap_or_default(),
                     })
                 })
                 .collect()

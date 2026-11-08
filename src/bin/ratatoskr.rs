@@ -27,8 +27,13 @@ async fn main() -> std::process::ExitCode {
         }
         Some("fetch") if args.len() == 2 => match rt.fetch(&args[1]).await {
             Ok(page) => {
-                println!("{} [{}{}]\n{}", page.title.unwrap_or_default(), page.content_type,
-                         if page.truncated { ", truncated" } else { "" }, page.text);
+                println!(
+                    "{} [{}{}]\n{}",
+                    page.title.unwrap_or_default(),
+                    page.content_type,
+                    if page.truncated { ", truncated" } else { "" },
+                    page.text
+                );
                 std::process::ExitCode::SUCCESS
             }
             Err(error) => {

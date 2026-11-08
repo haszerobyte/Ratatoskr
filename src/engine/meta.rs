@@ -62,7 +62,8 @@ pub struct Meta {
 impl Meta {
     /// `interval` spaces the requests to each engine; `cooldown` rests one that refused.
     pub fn new(members: Vec<Member>, cooldown: Duration, interval: Duration) -> Self {
-        let seat = |member| Seat { member, breaker: CircuitBreaker::new(cooldown), limiter: RateLimiter::new(interval) };
+        let seat =
+            |member| Seat { member, breaker: CircuitBreaker::new(cooldown), limiter: RateLimiter::new(interval) };
         Self { seats: members.into_iter().map(seat).collect() }
     }
 }
@@ -70,8 +71,12 @@ impl Meta {
 /// The URL as a de-duplication key: scheme-less, no trailing slash, lower-case host.
 fn url_key(url: &str) -> String {
     match url::Url::parse(url) {
-        Ok(parsed) => format!("{}{}{}", parsed.host_str().unwrap_or("").trim_start_matches("www.").to_lowercase(),
-                              parsed.path().trim_end_matches('/'), parsed.query().map(|q| format!("?{q}")).unwrap_or_default()),
+        Ok(parsed) => format!(
+            "{}{}{}",
+            parsed.host_str().unwrap_or("").trim_start_matches("www.").to_lowercase(),
+            parsed.path().trim_end_matches('/'),
+            parsed.query().map(|q| format!("?{q}")).unwrap_or_default()
+        ),
         Err(_) => url.to_string(),
     }
 }
@@ -89,7 +94,8 @@ pub fn aggregate(lists: Vec<Vec<Hit>>) -> Vec<Hit> {
         }
         *count += 1;
     }
-    let mut ranked: Vec<(usize, usize, Hit)> = order.into_iter().enumerate().map(|(i, (key, hit))| (counts[&key], i, hit)).collect();
+    let mut ranked: Vec<(usize, usize, Hit)> =
+        order.into_iter().enumerate().map(|(i, (key, hit))| (counts[&key], i, hit)).collect();
     ranked.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
     ranked.into_iter().map(|(_, _, hit)| hit).collect()
 }
@@ -99,7 +105,8 @@ pub fn aggregate(lists: Vec<Vec<Hit>>) -> Vec<Hit> {
 /// in the snippet only, then the rest; Wikimedia category pages dropped.
 pub fn rank(hits: Vec<Hit>, query: &str) -> Vec<Hit> {
     let lower = query.to_lowercase();
-    let words: Vec<&str> = lower.split(|c: char| !c.is_alphanumeric() && c != '_').filter(|w| w.chars().count() >= 3).collect();
+    let words: Vec<&str> =
+        lower.split(|c: char| !c.is_alphanumeric() && c != '_').filter(|w| w.chars().count() >= 3).collect();
     let has_word = |text: &str| {
         let text = text.to_lowercase();
         words.iter().any(|w| text.contains(w))
@@ -151,8 +158,14 @@ struct Answers {
 impl Meta {
     /// Ask `batch` together; record each answer and trip the breakers of the
     /// engines that refused. Returns the providers that answered.
-    async fn ask(&self, batch: &[&Seat], query: &str, limit: usize, country: Option<&str>,
-                 answers: &mut Answers) -> Vec<&'static str> {
+    async fn ask(
+        &self,
+        batch: &[&Seat],
+        query: &str,
+        limit: usize,
+        country: Option<&str>,
+        answers: &mut Answers,
+    ) -> Vec<&'static str> {
         let replies = join_all(batch.iter().map(|seat| async move {
             let wanted = if seat.member.encyclopedia { 1 } else { limit };
             seat.limiter.wait_turn().await;
@@ -205,14 +218,18 @@ impl Engine for Meta {
     fn search_in<'a>(&'a self, query: &'a str, limit: usize, country: Option<&'a str>) -> SearchFuture<'a> {
         Box::pin(async move {
             let ready = |encyclopedia: bool| -> Vec<&Seat> {
-                self.seats.iter().filter(|s| s.member.encyclopedia == encyclopedia && s.breaker.open_for().is_none()).collect()
+                self.seats
+                    .iter()
+                    .filter(|s| s.member.encyclopedia == encyclopedia && s.breaker.open_for().is_none())
+                    .collect()
             };
             // A random order, then the engines free soonest first (a stable
             // sort: equally free ones keep their random order).
             let mut web = shuffled(ready(false));
             web.sort_by_key(|seat| seat.limiter.ready_in());
             // An encyclopedia adds one page: not worth waiting for its turn.
-            let encyclopedias: Vec<&Seat> = ready(true).into_iter().filter(|s| s.limiter.ready_in().is_zero()).collect();
+            let encyclopedias: Vec<&Seat> =
+                ready(true).into_iter().filter(|s| s.limiter.ready_in().is_zero()).collect();
             if web.is_empty() {
                 return Err(EngineError::Refused("every web engine is cooling down".into()));
             }
@@ -228,7 +245,9 @@ impl Engine for Meta {
                 // the next one, in case that answer fails.
                 let mut later = Vec::new();
                 let mut taken = 0;
-                while taken < workers && let Some(member) = queue.pop_front() {
+                while taken < workers
+                    && let Some(member) = queue.pop_front()
+                {
                     if answered.contains(member.member.provider) {
                         continue;
                     }
@@ -265,7 +284,11 @@ impl Engine for Meta {
             if answers.web_refusals == answers.web_asked {
                 return Err(EngineError::Refused(answers.errors.join("; ")));
             }
-            if answers.errors.is_empty() { Ok(Vec::new()) } else { Err(EngineError::Transport(answers.errors.join("; "))) }
+            if answers.errors.is_empty() {
+                Ok(Vec::new())
+            } else {
+                Err(EngineError::Transport(answers.errors.join("; ")))
+            }
         })
     }
 }
@@ -281,15 +304,24 @@ mod tests {
 
     #[test]
     fn aggregation_dedupes_and_puts_what_several_engines_found_first() {
-        let yahoo = vec![hit("https://a.example/"), hit("https://rust-lang.org/"), hit("https://doc.rust-lang.org/book")];
-        let yandex = vec![hit("https://www.rust-lang.org"), hit("https://b.example/x"), hit("https://doc.rust-lang.org/book/")];
+        let yahoo =
+            vec![hit("https://a.example/"), hit("https://rust-lang.org/"), hit("https://doc.rust-lang.org/book")];
+        let yandex =
+            vec![hit("https://www.rust-lang.org"), hit("https://b.example/x"), hit("https://doc.rust-lang.org/book/")];
         let urls: Vec<String> = aggregate(vec![yahoo, yandex]).into_iter().map(|h| h.url).collect();
-        assert_eq!(urls, ["https://rust-lang.org/", "https://doc.rust-lang.org/book", "https://a.example/", "https://b.example/x"]);
+        assert_eq!(
+            urls,
+            ["https://rust-lang.org/", "https://doc.rust-lang.org/book", "https://a.example/", "https://b.example/x"]
+        );
     }
 
     #[test]
     fn ranking_follows_ddgs_simple_filter_ranker() {
-        let h = |url: &str, title: &str, snippet: &str| Hit { title: title.into(), url: url.into(), snippet: snippet.into() };
+        let h = |url: &str, title: &str, snippet: &str| Hit {
+            title: title.into(),
+            url: url.into(),
+            snippet: snippet.into(),
+        };
         let hits = vec![
             h("https://n.example/", "Nothing", "else"),
             h("https://s.example/", "Other", "about tokio"),
@@ -299,8 +331,16 @@ mod tests {
             h("https://commons.wikimedia.org/c", "Category:Tokio - Wikimedia Commons", ""),
         ];
         let urls: Vec<String> = rank(hits, "tokio select").into_iter().map(|h| h.url).collect();
-        assert_eq!(urls, ["https://en.wikipedia.org/wiki/Tokio", "https://b.example/", "https://t.example/", "https://s.example/",
-                          "https://n.example/"]);
+        assert_eq!(
+            urls,
+            [
+                "https://en.wikipedia.org/wiki/Tokio",
+                "https://b.example/",
+                "https://t.example/",
+                "https://s.example/",
+                "https://n.example/"
+            ]
+        );
     }
 
     #[test]
@@ -342,12 +382,16 @@ mod tests {
     async fn enough_results_stop_the_search_and_one_answer_per_provider_is_enough() {
         let asked = Arc::new(Mutex::new(Vec::new()));
         let fake = |name, reply| Arc::new(Fake { name, reply, asked: asked.clone() }) as Arc<dyn Engine>;
-        let meta = Meta::new(vec![
-            Member::encyclopedia(fake("wikipedia", Ok(vec![hit("https://en.wikipedia.org/wiki/X")]))),
-            Member::web(fake("yahoo", Ok(web_hits("y"))), "bing"),
-            Member::web(fake("duckduckgo", Ok(web_hits("d"))), "bing"),
-            Member::web(fake("yandex", Ok(web_hits("x"))), "yandex"),
-        ], Duration::from_secs(60), Duration::ZERO);
+        let meta = Meta::new(
+            vec![
+                Member::encyclopedia(fake("wikipedia", Ok(vec![hit("https://en.wikipedia.org/wiki/X")]))),
+                Member::web(fake("yahoo", Ok(web_hits("y"))), "bing"),
+                Member::web(fake("duckduckgo", Ok(web_hits("d"))), "bing"),
+                Member::web(fake("yandex", Ok(web_hits("x"))), "yandex"),
+            ],
+            Duration::from_secs(60),
+            Duration::ZERO,
+        );
         let hits = meta.search("x", 5).await.unwrap();
         assert_eq!(hits.len(), 5);
         assert_eq!(hits[0].url, "https://en.wikipedia.org/wiki/X");
@@ -355,7 +399,10 @@ mod tests {
         assert_eq!(asked.len(), 3, "the encyclopedia and two web engines, one batch: {asked:?}");
         assert!(asked.contains(&("wikipedia", 1)), "an encyclopedia gives one page");
         assert!(asked.contains(&("yandex", 5)));
-        assert!(asked.iter().filter(|(n, _)| *n == "yahoo" || *n == "duckduckgo").count() == 1, "one Bing engine: {asked:?}");
+        assert!(
+            asked.iter().filter(|(n, _)| *n == "yahoo" || *n == "duckduckgo").count() == 1,
+            "one Bing engine: {asked:?}"
+        );
     }
 
     /// Regression: with every web engine resting, the encyclopedias' one page
@@ -365,15 +412,23 @@ mod tests {
     async fn encyclopedias_alone_are_no_answer() {
         let asked = Arc::new(Mutex::new(Vec::new()));
         let fake = |name, reply| Arc::new(Fake { name, reply, asked: asked.clone() }) as Arc<dyn Engine>;
-        let meta = Meta::new(vec![
-            Member::encyclopedia(fake("wikipedia", Ok(vec![hit("https://en.wikipedia.org/wiki/X")]))),
-            Member::web(fake("yahoo", Ok(vec![])), "bing"),
-        ], Duration::from_secs(60), Duration::ZERO);
+        let meta = Meta::new(
+            vec![
+                Member::encyclopedia(fake("wikipedia", Ok(vec![hit("https://en.wikipedia.org/wiki/X")]))),
+                Member::web(fake("yahoo", Ok(vec![])), "bing"),
+            ],
+            Duration::from_secs(60),
+            Duration::ZERO,
+        );
         assert_eq!(meta.search("x", 5).await.unwrap(), vec![]);
-        let resting = Meta::new(vec![
-            Member::encyclopedia(fake("wikipedia", Ok(vec![hit("https://en.wikipedia.org/wiki/X")]))),
-            Member::web(fake("duckduckgo", Err(EngineError::Refused("challenge".into()))), "bing"),
-        ], Duration::from_secs(60), Duration::ZERO);
+        let resting = Meta::new(
+            vec![
+                Member::encyclopedia(fake("wikipedia", Ok(vec![hit("https://en.wikipedia.org/wiki/X")]))),
+                Member::web(fake("duckduckgo", Err(EngineError::Refused("challenge".into()))), "bing"),
+            ],
+            Duration::from_secs(60),
+            Duration::ZERO,
+        );
         assert!(matches!(resting.search("x", 5).await, Err(EngineError::Refused(_))));
         assert!(matches!(resting.search("x", 5).await, Err(EngineError::Refused(why)) if why.contains("cooling down")));
     }
@@ -385,11 +440,15 @@ mod tests {
         let asked = Arc::new(Mutex::new(Vec::new()));
         let fake = |name, reply| Arc::new(Fake { name, reply, asked: asked.clone() }) as Arc<dyn Engine>;
         let same: Vec<Hit> = (0..3).map(|i| hit(&format!("https://same.example/{i}"))).collect();
-        let meta = Meta::new(vec![
-            Member::web(fake("yahoo", Ok(same.clone())), "bing"),
-            Member::web(fake("yandex", Ok(same)), "yandex"),
-            Member::web(fake("other", Ok(web_hits("o"))), "other"),
-        ], Duration::from_secs(60), Duration::ZERO);
+        let meta = Meta::new(
+            vec![
+                Member::web(fake("yahoo", Ok(same.clone())), "bing"),
+                Member::web(fake("yandex", Ok(same)), "yandex"),
+                Member::web(fake("other", Ok(web_hits("o"))), "other"),
+            ],
+            Duration::from_secs(60),
+            Duration::ZERO,
+        );
         // The batch of two is random; whenever it is the two that agree, only
         // the third engine can make up the five.
         for _ in 0..30 {
@@ -403,11 +462,15 @@ mod tests {
     async fn a_busy_engine_is_asked_last() {
         let asked = Arc::new(Mutex::new(Vec::new()));
         let fake = |name, reply| Arc::new(Fake { name, reply, asked: asked.clone() }) as Arc<dyn Engine>;
-        let meta = Meta::new(vec![
-            Member::web(fake("yahoo", Ok(web_hits("y"))), "bing"),
-            Member::web(fake("yandex", Ok(web_hits("x"))), "yandex"),
-            Member::web(fake("other", Ok(web_hits("o"))), "other"),
-        ], Duration::from_secs(60), Duration::from_secs(30));
+        let meta = Meta::new(
+            vec![
+                Member::web(fake("yahoo", Ok(web_hits("y"))), "bing"),
+                Member::web(fake("yandex", Ok(web_hits("x"))), "yandex"),
+                Member::web(fake("other", Ok(web_hits("o"))), "other"),
+            ],
+            Duration::from_secs(60),
+            Duration::from_secs(30),
+        );
         let started = std::time::Instant::now();
         assert_eq!(meta.search("q1", 5).await.unwrap().len(), 5);
         assert_eq!(meta.search("q2", 5).await.unwrap().len(), 5);
@@ -421,18 +484,27 @@ mod tests {
     async fn refusals_trip_breakers_and_the_rest_carry_on() {
         let asked = Arc::new(Mutex::new(Vec::new()));
         let fake = |name, reply| Arc::new(Fake { name, reply, asked: asked.clone() }) as Arc<dyn Engine>;
-        let meta = Meta::new(vec![
-            Member::web(fake("duckduckgo", Err(EngineError::Refused("challenge".into()))), "bing"),
-            Member::web(fake("yandex", Ok(web_hits("x"))), "yandex"),
-        ], Duration::from_secs(60), Duration::ZERO);
+        let meta = Meta::new(
+            vec![
+                Member::web(fake("duckduckgo", Err(EngineError::Refused("challenge".into()))), "bing"),
+                Member::web(fake("yandex", Ok(web_hits("x"))), "yandex"),
+            ],
+            Duration::from_secs(60),
+            Duration::ZERO,
+        );
         assert_eq!(meta.search("x", 5).await.unwrap().len(), 5);
         assert_eq!(meta.search("y", 5).await.unwrap().len(), 5);
         let ddg_asks = asked.lock().unwrap().iter().filter(|(n, _)| *n == "duckduckgo").count();
         assert_eq!(ddg_asks, 1, "a refusing engine rests");
 
-        let all_refuse = Meta::new(vec![Member::web(fake("yahoo", Err(EngineError::Refused("throttled".into()))), "bing")],
-                                   Duration::from_secs(60), Duration::ZERO);
+        let all_refuse = Meta::new(
+            vec![Member::web(fake("yahoo", Err(EngineError::Refused("throttled".into()))), "bing")],
+            Duration::from_secs(60),
+            Duration::ZERO,
+        );
         assert!(matches!(all_refuse.search("x", 5).await, Err(EngineError::Refused(_))));
-        assert!(matches!(all_refuse.search("x", 5).await, Err(EngineError::Refused(why)) if why.contains("cooling down")));
+        assert!(
+            matches!(all_refuse.search("x", 5).await, Err(EngineError::Refused(why)) if why.contains("cooling down"))
+        );
     }
 }

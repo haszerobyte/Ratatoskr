@@ -36,7 +36,8 @@ impl Engine for Yandex {
         Box::pin(async move {
             let search_id = (1_000_000 + browser::random_u64() % 9_000_000).to_string();
             let (http, _) = self.sessions.open();
-            let request = http.get(&self.endpoint).query(&[("text", query), ("web", "1"), ("searchid", search_id.as_str())]);
+            let request =
+                http.get(&self.endpoint).query(&[("text", query), ("web", "1"), ("searchid", search_id.as_str())]);
             let body = browser::read_page(request, "b-serp-item").await?;
             parse(&body, limit)
         })
@@ -89,7 +90,8 @@ mod tests {
     #[test]
     fn layout_changes_are_errors_and_no_results_is_empty() {
         assert!(matches!(parse("<html><body>new layout</body></html>", 5), Err(EngineError::Parse(_))));
-        let none = "<html><head><title>There are no search results for zzqx — on Yandex</title></head><body></body></html>";
+        let none =
+            "<html><head><title>There are no search results for zzqx — on Yandex</title></head><body></body></html>";
         assert_eq!(parse(none, 5).unwrap(), vec![]);
     }
 }

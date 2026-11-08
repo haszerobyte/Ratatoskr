@@ -50,7 +50,8 @@ impl Engine for Ddgs {
 }
 
 pub fn parse(body: &Value) -> Result<Vec<Hit>, EngineError> {
-    let results = body.get("results").and_then(Value::as_array).ok_or_else(|| EngineError::Parse("no results field".into()))?;
+    let results =
+        body.get("results").and_then(Value::as_array).ok_or_else(|| EngineError::Parse("no results field".into()))?;
     Ok(results
         .iter()
         .filter_map(|item| {
@@ -86,7 +87,10 @@ mod tests {
             {"title": "Rust", "href": "https://rust-lang.org/", "body": "A language"},
             {"title": "odd", "href": "javascript:x", "body": ""},
             {"title": "Ad", "href": "https://www.bing.com/aclick?ld=e8_KUCT&u=x", "body": "ad"}]});
-        assert_eq!(parse(&body).unwrap(), vec![Hit { title: "Rust".into(), url: "https://rust-lang.org/".into(), snippet: "A language".into() }]);
+        assert_eq!(
+            parse(&body).unwrap(),
+            vec![Hit { title: "Rust".into(), url: "https://rust-lang.org/".into(), snippet: "A language".into() }]
+        );
         assert!(matches!(parse(&json!({"detail": "x"})), Err(EngineError::Parse(_))));
     }
 }

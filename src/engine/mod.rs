@@ -76,11 +76,7 @@ pub trait Engine: Send + Sync {
 
 /// The HTTP client engines share: our User-Agent, compression, a timeout.
 pub fn http_client(timeout: Duration) -> reqwest::Client {
-    reqwest::Client::builder()
-        .user_agent(crate::user_agent())
-        .timeout(timeout)
-        .build()
-        .expect("http client")
+    reqwest::Client::builder().user_agent(crate::user_agent()).timeout(timeout).build().expect("http client")
 }
 
 /// Map an HTTP status to an engine error: 403/429 (and 202 for engines that

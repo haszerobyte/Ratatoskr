@@ -7,15 +7,40 @@
 
 use scraper::{ElementRef, Html, Node, Selector};
 
-const SKIP: &[&str] = &["script", "style", "noscript", "template", "svg", "nav", "footer", "header", "aside", "form", "iframe"];
-const BLOCK: &[&str] = &["p", "div", "section", "article", "main", "br", "tr", "li", "ul", "ol", "table", "pre", "blockquote",
-                         "h1", "h2", "h3", "h4", "h5", "h6", "dt", "dd"];
+const SKIP: &[&str] =
+    &["script", "style", "noscript", "template", "svg", "nav", "footer", "header", "aside", "form", "iframe"];
+const BLOCK: &[&str] = &[
+    "p",
+    "div",
+    "section",
+    "article",
+    "main",
+    "br",
+    "tr",
+    "li",
+    "ul",
+    "ol",
+    "table",
+    "pre",
+    "blockquote",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "dt",
+    "dd",
+];
 
 /// A page's title and body text; `base` (the page's URL) makes relative links absolute.
 pub fn html_to_text(html: &str, base: Option<&url::Url>) -> (Option<String>, String) {
     let document = Html::parse_document(html);
-    let title = Selector::parse("title").ok().and_then(|s| document.select(&s).next())
-        .map(|t| squash(&t.text().collect::<String>())).filter(|t| !t.is_empty());
+    let title = Selector::parse("title")
+        .ok()
+        .and_then(|s| document.select(&s).next())
+        .map(|t| squash(&t.text().collect::<String>()))
+        .filter(|t| !t.is_empty());
     let root = ["main", "article", "body"]
         .iter()
         .filter_map(|tag| Selector::parse(tag).ok())
@@ -24,7 +49,8 @@ pub fn html_to_text(html: &str, base: Option<&url::Url>) -> (Option<String>, Str
     let mut out = String::new();
     walk(root, base, &mut out);
     // A heading that held only an image is a bare "#": nothing to read.
-    let lines: Vec<String> = out.lines().map(squash).filter(|l| !l.is_empty() && !l.chars().all(|c| c == '#')).collect();
+    let lines: Vec<String> =
+        out.lines().map(squash).filter(|l| !l.is_empty() && !l.chars().all(|c| c == '#')).collect();
     (title, lines.join("\n"))
 }
 
@@ -62,7 +88,8 @@ fn walk(element: ElementRef, base: Option<&url::Url>, out: &mut String) {
                 {
                     // A link around a whole card (a result, a match) keeps the
                     // card's lines; the link follows it.
-                    let wraps_blocks = child.descendants().filter_map(|d| d.value().as_element()).any(|d| BLOCK.contains(&d.name()));
+                    let wraps_blocks =
+                        child.descendants().filter_map(|d| d.value().as_element()).any(|d| BLOCK.contains(&d.name()));
                     if wraps_blocks {
                         out.push('\n');
                         walk(child, base, out);
@@ -117,7 +144,8 @@ mod tests {
         let html = "<html><head><title> Rust  Docs </title><style>x{}</style></head><body>\
             <nav>Home | About</nav><main><h1>Intro</h1><p>Rust is <b>fast</b>.</p>\
             <ul><li>safe</li><li>concurrent</li></ul><script>track()</script></main><footer>(c)</footer></body></html>";
-        let (title, text) = html_to_text(&html.replace("<h1>Intro</h1>", "<h1><img src=\"logo.png\"></h1><h1>Intro</h1>"), None);
+        let (title, text) =
+            html_to_text(&html.replace("<h1>Intro</h1>", "<h1><img src=\"logo.png\"></h1><h1>Intro</h1>"), None);
         assert_eq!(title.as_deref(), Some("Rust Docs"));
         assert_eq!(text, "# Intro\nRust is fast.\n- safe\n- concurrent");
         assert_eq!(fragment_text("a <strong>b</strong> &amp; c"), "a b & c");
@@ -134,8 +162,11 @@ mod tests {
             <table><tr><th>Batter</th><th>R</th></tr><tr><td>Kohli</td><td>82</td></tr></table>\
             <a href=\"/m/2\"><div>2nd Test</div><div>WI 356</div></a></body>";
         let (_, text) = html_to_text(html, Some(&base));
-        assert_eq!(text, "Day 4: Stumps [Live Score](https://www.cricbuzz.com/live-cricket-scores/1/x) | \
+        assert_eq!(
+            text,
+            "Day 4: Stumps [Live Score](https://www.cricbuzz.com/live-cricket-scores/1/x) | \
             [Scorecard](https://www.cricbuzz.com/cricket-scorecard/1/x) Top More\nBatter | R\nKohli | 82\n\
-            2nd Test\nWI 356 [open](https://www.cricbuzz.com/m/2)");
+            2nd Test\nWI 356 [open](https://www.cricbuzz.com/m/2)"
+        );
     }
 }

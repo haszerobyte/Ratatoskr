@@ -34,15 +34,10 @@ impl Engine for Google {
     fn search_in<'a>(&'a self, query: &'a str, limit: usize, country: Option<&'a str>) -> SearchFuture<'a> {
         Box::pin(async move {
             let num = limit.clamp(1, 10).to_string();
-            let mut params = vec![("key", self.key.as_str()), ("cx", self.cx.as_str()), ("q", query), ("num", num.as_str())];
+            let mut params =
+                vec![("key", self.key.as_str()), ("cx", self.cx.as_str()), ("q", query), ("num", num.as_str())];
             params.extend(country.map(|c| ("gl", c)));
-            let reply = self
-                .http
-                .get(&self.endpoint)
-                .query(&params)
-                .send()
-                .await
-                .map_err(transport)?;
+            let reply = self.http.get(&self.endpoint).query(&params).send().await.map_err(transport)?;
             if !reply.status().is_success() {
                 return Err(status_error(reply.status().as_u16()));
             }

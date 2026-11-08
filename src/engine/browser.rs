@@ -57,14 +57,43 @@ pub fn navigation_headers(family: Family) -> (wreq::header::HeaderMap, wreq::hea
     extra.insert("sec-fetch-user", HeaderValue::from_static("?1"));
     let order: &[&'static str] = match family {
         Family::Chromium => &[
-            "content-length", "cache-control", "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform", "origin",
-            "content-type", "upgrade-insecure-requests", "user-agent", "accept", "sec-fetch-site", "sec-fetch-mode",
-            "sec-fetch-user", "sec-fetch-dest", "referer", "accept-encoding", "accept-language", "cookie", "priority",
+            "content-length",
+            "cache-control",
+            "sec-ch-ua",
+            "sec-ch-ua-mobile",
+            "sec-ch-ua-platform",
+            "origin",
+            "content-type",
+            "upgrade-insecure-requests",
+            "user-agent",
+            "accept",
+            "sec-fetch-site",
+            "sec-fetch-mode",
+            "sec-fetch-user",
+            "sec-fetch-dest",
+            "referer",
+            "accept-encoding",
+            "accept-language",
+            "cookie",
+            "priority",
         ],
         Family::Firefox => &[
-            "user-agent", "accept", "accept-language", "accept-encoding", "content-type", "content-length", "origin",
-            "referer", "cookie", "upgrade-insecure-requests", "sec-fetch-dest", "sec-fetch-mode", "sec-fetch-site",
-            "sec-fetch-user", "priority", "te",
+            "user-agent",
+            "accept",
+            "accept-language",
+            "accept-encoding",
+            "content-type",
+            "content-length",
+            "origin",
+            "referer",
+            "cookie",
+            "upgrade-insecure-requests",
+            "sec-fetch-dest",
+            "sec-fetch-mode",
+            "sec-fetch-site",
+            "sec-fetch-user",
+            "priority",
+            "te",
         ],
     };
     let mut orig = OrigHeaderMap::new();
@@ -141,14 +170,59 @@ pub fn pick(timeout: Duration) -> (wreq::Client, Family) {
 /// browser asking for Indian results is a mismatch a site can see.
 pub fn accept_language(country: &str, family: Family) -> Option<String> {
     const LANGUAGES: &[(&str, &str)] = &[
-        ("AR", "es"), ("AT", "de"), ("AU", "en"), ("BE", "nl"), ("BG", "bg"), ("BR", "pt"), ("CA", "en"),
-        ("CH", "de"), ("CL", "es"), ("CN", "zh"), ("CO", "es"), ("CZ", "cs"), ("DE", "de"), ("DK", "da"),
-        ("EE", "et"), ("ES", "es"), ("FI", "fi"), ("FR", "fr"), ("GB", "en"), ("GR", "el"), ("HK", "zh"),
-        ("HR", "hr"), ("HU", "hu"), ("ID", "id"), ("IE", "en"), ("IL", "he"), ("IN", "en"), ("IT", "it"),
-        ("JP", "ja"), ("KR", "ko"), ("LT", "lt"), ("LV", "lv"), ("MX", "es"), ("MY", "en"), ("NL", "nl"),
-        ("NO", "nb"), ("NZ", "en"), ("PE", "es"), ("PH", "en"), ("PL", "pl"), ("PT", "pt"), ("RO", "ro"),
-        ("RU", "ru"), ("SE", "sv"), ("SG", "en"), ("SK", "sk"), ("TH", "th"), ("TR", "tr"), ("TW", "zh"),
-        ("UA", "uk"), ("VE", "es"), ("VN", "vi"), ("ZA", "en"),
+        ("AR", "es"),
+        ("AT", "de"),
+        ("AU", "en"),
+        ("BE", "nl"),
+        ("BG", "bg"),
+        ("BR", "pt"),
+        ("CA", "en"),
+        ("CH", "de"),
+        ("CL", "es"),
+        ("CN", "zh"),
+        ("CO", "es"),
+        ("CZ", "cs"),
+        ("DE", "de"),
+        ("DK", "da"),
+        ("EE", "et"),
+        ("ES", "es"),
+        ("FI", "fi"),
+        ("FR", "fr"),
+        ("GB", "en"),
+        ("GR", "el"),
+        ("HK", "zh"),
+        ("HR", "hr"),
+        ("HU", "hu"),
+        ("ID", "id"),
+        ("IE", "en"),
+        ("IL", "he"),
+        ("IN", "en"),
+        ("IT", "it"),
+        ("JP", "ja"),
+        ("KR", "ko"),
+        ("LT", "lt"),
+        ("LV", "lv"),
+        ("MX", "es"),
+        ("MY", "en"),
+        ("NL", "nl"),
+        ("NO", "nb"),
+        ("NZ", "en"),
+        ("PE", "es"),
+        ("PH", "en"),
+        ("PL", "pl"),
+        ("PT", "pt"),
+        ("RO", "ro"),
+        ("RU", "ru"),
+        ("SE", "sv"),
+        ("SG", "en"),
+        ("SK", "sk"),
+        ("TH", "th"),
+        ("TR", "tr"),
+        ("TW", "zh"),
+        ("UA", "uk"),
+        ("VE", "es"),
+        ("VN", "vi"),
+        ("ZA", "en"),
     ];
     let cc = country.to_ascii_uppercase();
     let lang = LANGUAGES.iter().find(|(c, _)| *c == cc)?.1;
@@ -172,9 +246,17 @@ pub fn same_site(request: wreq::RequestBuilder, page: &str) -> wreq::RequestBuil
 /// markers (DuckDuckGo's anomaly page among them).
 pub fn is_challenge(body: &str) -> bool {
     let lower = body.to_ascii_lowercase();
-    ["captcha", "unusual traffic", "are you a robot", "verify you are human", "anomaly-modal", "anomaly.js", "challenge-form"]
-        .iter()
-        .any(|w| lower.contains(w))
+    [
+        "captcha",
+        "unusual traffic",
+        "are you a robot",
+        "verify you are human",
+        "anomaly-modal",
+        "anomaly.js",
+        "challenge-form",
+    ]
+    .iter()
+    .any(|w| lower.contains(w))
 }
 
 /// Send a scraped engine's request and read its page, the steps every one of
@@ -182,7 +264,10 @@ pub fn is_challenge(body: &str) -> bool {
 /// is a refusal when it is a challenge: the engines' markers, a vendor the
 /// fetcher knows (Cloudflare, DataDome, ...), or a 202, DuckDuckGo's way of
 /// serving its anomaly page. Then a non-2xx status is an error.
-pub(crate) async fn read_page(request: wreq::RequestBuilder, results_marker: &str) -> Result<String, super::EngineError> {
+pub(crate) async fn read_page(
+    request: wreq::RequestBuilder,
+    results_marker: &str,
+) -> Result<String, super::EngineError> {
     use super::{EngineError, browser_transport, status_error};
     let reply = request.send().await.map_err(browser_transport)?;
     let status = reply.status().as_u16();
@@ -208,11 +293,13 @@ mod tests {
 
     #[test]
     fn the_pool_leans_to_the_hosts_os_without_dropping_windows() {
-        let on = |platform: Platform| PERSONAS.iter().filter(|(_, p)| format!("{p:?}") == format!("{platform:?}")).count();
+        let on =
+            |platform: Platform| PERSONAS.iter().filter(|(_, p)| format!("{p:?}") == format!("{platform:?}")).count();
         let (windows, total) = (on(Platform::Windows), PERSONAS.len());
         assert!(windows >= 4, "Windows stays in the pool");
         assert!(on(Platform::Linux) + on(Platform::MacOS) >= total * 3 / 4, "TTL-64 systems are most of it");
-        let versions: std::collections::HashSet<String> = PERSONAS.iter().map(|(profile, _)| format!("{profile:?}")).collect();
+        let versions: std::collections::HashSet<String> =
+            PERSONAS.iter().map(|(profile, _)| format!("{profile:?}")).collect();
         assert!(versions.len() >= 7, "versions are spread: {versions:?}");
         for (profile, platform) in PERSONAS {
             builder(*profile, *platform).build().expect("every persona builds");

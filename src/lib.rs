@@ -169,13 +169,14 @@ impl Ratatoskr {
         // never solved here.
         use engine::meta::Member;
         let meta = vec![
-            Member::encyclopedia(Arc::new(engine::wikipedia::Wikipedia::new(http.clone(), "en"))),
+            Member::encyclopedia(Arc::new(engine::wikipedia::Wikipedia::best_page(http.clone(), "en"))),
             Member::encyclopedia(Arc::new(engine::grokipedia::Grokipedia::new(http.clone()))),
             Member::web(Arc::new(engine::yahoo::Yahoo::new(settings.timeout)), "bing"),
             Member::web(Arc::new(engine::duckduckgo::DuckDuckGo::new(settings.timeout)), "bing"),
             Member::web(Arc::new(engine::yandex::Yandex::new(settings.timeout)), "yandex"),
         ];
-        let mut engines: Vec<Arc<dyn Engine>> = vec![Arc::new(engine::meta::Meta::new(meta, settings.cooldown, settings.min_interval))];
+        let mut engines: Vec<Arc<dyn Engine>> =
+            vec![Arc::new(engine::meta::Meta::new(meta, settings.cooldown, settings.min_interval))];
         if let Some(base) = sources.ddgs_url.as_deref().filter(|u| !u.trim().is_empty()) {
             engines.push(Arc::new(engine::ddgs::Ddgs::new(http.clone(), base.trim())));
         }
@@ -200,7 +201,12 @@ impl Ratatoskr {
     }
 
     /// [`Ratatoskr::search`] localized to `country` (ISO 3166-1 alpha-2).
-    pub async fn search_in(&self, query: &str, limit: usize, country: Option<&str>) -> Result<SearchOutcome, SearchFailure> {
+    pub async fn search_in(
+        &self,
+        query: &str,
+        limit: usize,
+        country: Option<&str>,
+    ) -> Result<SearchOutcome, SearchFailure> {
         let key = format!("{limit}\u{0}{}\u{0}{}", country.unwrap_or(""), query.trim().to_lowercase());
         if let Some((engine, hits)) = self.cache.get(&key) {
             return Ok(SearchOutcome { hits, engine, from_cache: true });

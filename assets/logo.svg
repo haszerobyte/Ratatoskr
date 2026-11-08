@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title desc">
+  <title id="title">ratatoskr</title>
+  <desc id="desc">A squirrel carrying a message along a branch of the world tree, inside a round badge.</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d2b3a"/>
+      <stop offset="1" stop-color="#0f1720"/>
+    </linearGradient>
+    <linearGradient id="fur" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f29d4b"/>
+      <stop offset="1" stop-color="#c8621e"/>
+    </linearGradient>
+  </defs>
+  <!-- badge -->
+  <circle cx="128" cy="128" r="124" fill="url(#sky)"/>
+  <circle cx="128" cy="128" r="116" fill="none" stroke="#3b5268" stroke-width="3"/>
+  <!-- the world tree: a branch across the badge, roots and crown as arcs -->
+  <path d="M28 176 C 80 162, 150 168, 230 150" fill="none" stroke="#6b4a2f" stroke-width="12" stroke-linecap="round"/>
+  <path d="M176 164 C 186 150, 198 142, 214 138" fill="none" stroke="#6b4a2f" stroke-width="6" stroke-linecap="round"/>
+  <path d="M60 172 C 54 186, 48 196, 40 202" fill="none" stroke="#6b4a2f" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="214" cy="136" r="7" fill="#5fae6b"/>
+  <circle cx="204" cy="128" r="5" fill="#5fae6b"/>
+  <circle cx="40" cy="204" r="5" fill="#5fae6b"/>
+  <!-- tail: a large curl behind the body -->
+  <path d="M104 160 C 70 158, 52 128, 62 98 C 72 66, 112 58, 128 82 C 140 100, 126 120, 108 112 C 96 106, 100 90, 112 92"
+        fill="none" stroke="url(#fur)" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- body -->
+  <ellipse cx="138" cy="146" rx="30" ry="22" fill="url(#fur)"/>
+  <ellipse cx="146" cy="152" rx="14" ry="10" fill="#f7c48d"/>
+  <!-- head -->
+  <circle cx="170" cy="122" r="18" fill="url(#fur)"/>
+  <path d="M160 108 L 162 92 L 172 106 Z" fill="#c8621e"/>
+  <circle cx="176" cy="118" r="3.4" fill="#0f1720"/>
+  <circle cx="177.2" cy="116.8" r="1.1" fill="#ffffff"/>
+  <circle cx="187" cy="126" r="2.6" fill="#7a3a12"/>
+  <!-- legs on the branch -->
+  <path d="M124 164 L 120 170" stroke="#c8621e" stroke-width="7" stroke-linecap="round"/>
+  <path d="M154 164 L 158 168" stroke="#c8621e" stroke-width="7" stroke-linecap="round"/>
+  <!-- the message it carries: a scroll held at the mouth -->
+  <rect x="182" y="128" width="22" height="13" rx="3" fill="#f3ead2" stroke="#b9a77a" stroke-width="2"/>
+  <path d="M187 133 H 199 M 187 137 H 196" stroke="#8a7a52" stroke-width="1.6" stroke-linecap="round"/>
+  <!-- search: a lens over the crown -->
+  <circle cx="196" cy="66" r="13" fill="none" stroke="#9fd3ff" stroke-width="5"/>
+  <path d="M205 75 L 216 86" stroke="#9fd3ff" stroke-width="6" stroke-linecap="round"/>
+</svg>
