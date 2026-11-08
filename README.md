@@ -58,7 +58,7 @@ messages up and down the world tree.
   [politeness and terms](#politeness-and-terms)
 - [Performance](#performance)
 - [Building from source](#building-from-source)
-- [Contributing](#contributing)
+- [Contributing](#contributing): [repository layout](#repository-layout)
 - [Releasing](#releasing)
 - [License](#license)
 
@@ -96,8 +96,8 @@ messages up and down the world tree.
   It runs the MCP server on stdio by default, `docker run -i --rm
   ghcr.io/haszerobyte/ratatoskr`, or any command:
   `docker run --rm ghcr.io/haszerobyte/ratatoskr search "tokio select"`.
-  `docker build -f packaging/docker/Dockerfile .` builds the same image from
-  source.
+  [`packaging/docker/Dockerfile`](packaging/docker/Dockerfile) builds the same
+  image from source: `docker build -f packaging/docker/Dockerfile .`
 
 **The library:** the package is `ratatoskr-web`, because the name `ratatoskr`
 was taken on crates.io. In code it's still `ratatoskr`.
@@ -510,7 +510,7 @@ The numbers are for comparison, not absolutes. Search time is mostly the
 search engines' own response time, and it varies with your network, location
 and the hour. Memory and startup barely vary.
 
-To measure on your machine, run `bench/compare.sh [path/to/ratatoskr]`. It
+To measure on your machine, run [`bench/compare.sh`](bench/compare.sh) `[path/to/ratatoskr]`. It
 needs `uv` and `python3`, and installs the Python server into a throwaway
 environment.
 
@@ -546,8 +546,23 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
+### Repository layout
+
+| Path | What's there |
+|---|---|
+| [`src/`](src) | the library; [`src/bin/ratatoskr.rs`](src/bin/ratatoskr.rs) is the command, [`src/mcp.rs`](src/mcp.rs) the MCP server |
+| [`src/engine/`](src/engine) | the web search engines and the meta-search that combines them |
+| [`src/vertical/`](src/vertical) | the news, images, videos and books searches |
+| [`tests/`](tests) | integration tests; [`tests/fixtures/`](tests/fixtures) holds recorded engine pages and trimmed real pages |
+| [`packaging/docker/`](packaging/docker) | the container image: built from source, and from the release binaries |
+| [`packaging/mcp/`](packaging/mcp) | [`server.json`](packaging/mcp/server.json), the MCP Registry entry |
+| [`bench/`](bench) | the benchmark against other tools |
+| [`.github/workflows/`](.github/workflows) | CI and the release |
+
+### When a search engine changes its page
+
 Search engines change their pages. When an engine stops parsing:
-1. capture a fresh results page into `tests/fixtures/`;
+1. capture a fresh results page into [`tests/fixtures/`](tests/fixtures);
 2. replace its per-request tracking tokens with `TOKEN`;
 3. adjust the engine's parser.
 
@@ -573,7 +588,7 @@ The workflow runs these steps in order, stopping at the first failure:
 8. publishes `ratatoskr-web` to crates.io;
 9. tags the commit `v<version>` and publishes the drafted release;
 10. updates the [MCP Registry](https://registry.modelcontextprotocol.io)
-    entry from `packaging/mcp/server.json`, pointing at that version's image. This runs
+    entry from [`packaging/mcp/server.json`](packaging/mcp/server.json), pointing at that version's image. This runs
     last, on its own: if it fails, the release is still complete.
 
 The first image push creates the `ratatoskr` package on GitHub as private:
