@@ -371,8 +371,13 @@ Some engines aren't used:
 ## How fetch works
 
 - **Formats:**
-  - HTML is reduced to its main content (`<main>`, `<article>`, else `<body>`),
-    without scripts, styles or navigation;
+  - HTML becomes text with Markdown links, without scripts or styles: a
+    page's `<main>` (or its one `<article>`), without the menus, header and
+    footer around it, when that holds at least half of the page's text, as
+    an article's does; otherwise the whole body, menus and sidebars
+    included, since a listing's or a scoreboard's items often sit there;
+  - a page rendered by script, with almost no text, adds the text fields of
+    its JSON-LD data;
   - JSON, XML and plain text pass through;
   - a PDF's text is extracted, and its bytes are returned in `page.pdf`.
 - **Caps:** 2 MB of body, 32 MB for a PDF, and 100,000 characters of text.
