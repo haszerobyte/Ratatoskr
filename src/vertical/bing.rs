@@ -183,31 +183,48 @@ pub fn parse_images(page: &str, limit: usize) -> Result<Vec<ImageResult>, Engine
     Ok(images)
 }
 
-/// Bing's news, as a [`Source`].
-pub struct News(pub Bing);
-/// Bing's images, as a [`Source`].
-pub struct Images(pub Bing);
+/// One of Bing's result kinds as a [`Source`]: which fragment, how to ask
+/// for it, and its parser (given the time now, for ages).
+pub struct Feed<T> {
+    site: Bing,
+    path: &'static str,
+    marker: &'static str,
+    params: fn(&SearchRequest) -> Vec<(&'static str, String)>,
+    parse: fn(&str, usize, i64) -> Result<Vec<T>, EngineError>,
+}
 
-impl Source<NewsResult> for News {
-    fn name(&self) -> &'static str {
-        "bing"
+impl Bing {
+    /// Its news fragment.
+    pub fn news(self) -> Feed<NewsResult> {
+        Feed {
+            site: self,
+            path: "/news/infinitescrollajax",
+            marker: "newsitem",
+            params: news_params,
+            parse: parse_news,
+        }
     }
-    fn search<'a>(&'a self, request: &'a SearchRequest) -> SourceFuture<'a, NewsResult> {
-        Box::pin(async move {
-            let page = self.0.page("/news/infinitescrollajax", &news_params(request), "newsitem").await?;
-            parse_news(&page, request.limit, now_unix())
-        })
+
+    /// Its images fragment.
+    pub fn images(self) -> Feed<ImageResult> {
+        Feed {
+            site: self,
+            path: "/images/async",
+            marker: "iusc",
+            params: images_params,
+            parse: |page, limit, _now| parse_images(page, limit),
+        }
     }
 }
 
-impl Source<ImageResult> for Images {
+impl<T: Send + 'static> Source<T> for Feed<T> {
     fn name(&self) -> &'static str {
         "bing"
     }
-    fn search<'a>(&'a self, request: &'a SearchRequest) -> SourceFuture<'a, ImageResult> {
+    fn search<'a>(&'a self, request: &'a SearchRequest) -> SourceFuture<'a, T> {
         Box::pin(async move {
-            let page = self.0.page("/images/async", &images_params(request), "iusc").await?;
-            parse_images(&page, request.limit)
+            let page = self.site.page(self.path, &(self.params)(request), self.marker).await?;
+            (self.parse)(&page, request.limit, now_unix())
         })
     }
 }

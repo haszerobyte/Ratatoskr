@@ -7,6 +7,7 @@
 use scraper::{Html, Selector};
 
 use super::{NewsResult, Source, SourceFuture, date_from_age, now_unix};
+use crate::engine::yahoo::real_url;
 use crate::engine::{EngineError, SearchRequest, browser};
 use crate::text::squash;
 
@@ -38,19 +39,6 @@ pub fn params(req: &SearchRequest) -> Vec<(&'static str, String)> {
         params.push(("b", ((req.page - 1) * 10 + 1).to_string()));
     }
     params
-}
-
-/// The article behind a r.search.yahoo.com link: its `RU=` segment.
-fn real_url(href: &str) -> Option<String> {
-    let target = match href.split_once("/RU=") {
-        Some((_, rest)) => {
-            let end = rest.find("/RK=").or_else(|| rest.find("/RS=")).unwrap_or(rest.len());
-            url::form_urlencoded::parse(format!("u={}", &rest[..end]).as_bytes()).next().map(|(_, v)| v.into_owned())?
-        }
-        None => href.to_string(),
-    };
-    let parsed = url::Url::parse(&target).ok()?;
-    matches!(parsed.scheme(), "http" | "https").then(|| parsed.to_string())
 }
 
 /// News from a Yahoo news results page.

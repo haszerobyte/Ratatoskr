@@ -207,46 +207,39 @@ pub fn parse_images(body: &Value, limit: usize) -> Result<Vec<ImageResult>, Engi
         .collect())
 }
 
-/// DuckDuckGo's news, as a [`Source`].
-pub struct News(pub DuckDuckGo);
-/// DuckDuckGo's videos, as a [`Source`].
-pub struct Videos(pub DuckDuckGo);
-/// DuckDuckGo's images, as a [`Source`].
-pub struct Images(pub DuckDuckGo);
+/// One of DuckDuckGo's result kinds as a [`Source`]: which endpoint, and its parser.
+pub struct Feed<T> {
+    site: DuckDuckGo,
+    kind: Kind,
+    parse: fn(&Value, usize) -> Result<Vec<T>, EngineError>,
+}
 
-impl Source<NewsResult> for News {
-    fn name(&self) -> &'static str {
-        "duckduckgo"
+impl DuckDuckGo {
+    /// Its news (`news.js`).
+    pub fn news(self) -> Feed<NewsResult> {
+        Feed { site: self, kind: Kind::News, parse: parse_news }
     }
-    fn provider(&self) -> &'static str {
-        "bing"
+
+    /// Its videos (`v.js`).
+    pub fn videos(self) -> Feed<VideoResult> {
+        Feed { site: self, kind: Kind::Videos, parse: parse_videos }
     }
-    fn search<'a>(&'a self, request: &'a SearchRequest) -> SourceFuture<'a, NewsResult> {
-        Box::pin(async move { parse_news(&self.0.json(Kind::News, request).await?, request.limit) })
+
+    /// Its images (`i.js`).
+    pub fn images(self) -> Feed<ImageResult> {
+        Feed { site: self, kind: Kind::Images, parse: parse_images }
     }
 }
 
-impl Source<VideoResult> for Videos {
+impl<T: Send + 'static> Source<T> for Feed<T> {
     fn name(&self) -> &'static str {
         "duckduckgo"
     }
     fn provider(&self) -> &'static str {
         "bing"
     }
-    fn search<'a>(&'a self, request: &'a SearchRequest) -> SourceFuture<'a, VideoResult> {
-        Box::pin(async move { parse_videos(&self.0.json(Kind::Videos, request).await?, request.limit) })
-    }
-}
-
-impl Source<ImageResult> for Images {
-    fn name(&self) -> &'static str {
-        "duckduckgo"
-    }
-    fn provider(&self) -> &'static str {
-        "bing"
-    }
-    fn search<'a>(&'a self, request: &'a SearchRequest) -> SourceFuture<'a, ImageResult> {
-        Box::pin(async move { parse_images(&self.0.json(Kind::Images, request).await?, request.limit) })
+    fn search<'a>(&'a self, request: &'a SearchRequest) -> SourceFuture<'a, T> {
+        Box::pin(async move { (self.parse)(&self.site.json(self.kind, request).await?, request.limit) })
     }
 }
 

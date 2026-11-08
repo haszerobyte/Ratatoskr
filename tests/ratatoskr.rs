@@ -683,3 +683,52 @@ async fn bing_reads_results_and_sends_the_options() {
     assert_eq!(hits.len(), 3);
     assert_eq!(hits[0].url, "https://www.raspberrypi.com/");
 }
+
+/// DuckDuckGo's news, end to end: the results page hands out the vqd token,
+/// which the JSON request carries back; a 202 challenge is a refusal.
+#[tokio::test]
+async fn duckduckgo_news_takes_the_pages_token_and_a_challenge_is_a_refusal() {
+    use ratatoskr::vertical::Source;
+    let site = serve(
+        Router::new()
+            .route("/", get(|| async { ([(header::CONTENT_TYPE, "text/html")], r#"<script>vqd="4-12345";</script>"#) }))
+            .route(
+                "/news.js",
+                get(|axum::extract::Query(q): axum::extract::Query<std::collections::HashMap<String, String>>| async move {
+                    assert_eq!(q.get("vqd").map(String::as_str), Some("4-12345"), "the page's token comes back");
+                    assert_eq!(q.get("df").map(String::as_str), Some("w"));
+                    ([(header::CONTENT_TYPE, "application/json")], include_str!("fixtures/verticals/ddg_news.json")).into_response()
+                }),
+            )
+            .route(
+                "/v.js",
+                get(|| async { (StatusCode::ACCEPTED, r#"{"response_type":"botnet_challenge"}"#).into_response() }),
+            ),
+    )
+    .await;
+    let ddg = || ratatoskr::vertical::duckduckgo::DuckDuckGo::with_site(browser::client(Duration::from_secs(5)), &site);
+    let request = ratatoskr::SearchRequest::new("raspberry pi", 3).time(Some(ratatoskr::TimeLimit::Week));
+    let news = ddg().news().search(&request).await.unwrap();
+    assert_eq!(news.len(), 3);
+    assert!(news[0].url.starts_with("https://"));
+    let error = ddg().videos().search(&request).await.unwrap_err();
+    assert!(error.is_refusal(), "{error}");
+}
+
+/// Bing's news fragment, end to end.
+#[tokio::test]
+async fn bing_news_reads_its_cards() {
+    use ratatoskr::vertical::Source;
+    let site = serve(Router::new().route(
+        "/news/infinitescrollajax",
+        get(|axum::extract::RawQuery(query): axum::extract::RawQuery| async move {
+            assert!(query.unwrap_or_default().starts_with("q=raspberry+pi&InfiniteScroll=1&first=1&SFX=1"));
+            ([(header::CONTENT_TYPE, "text/html")], include_str!("fixtures/verticals/bing_news.html")).into_response()
+        }),
+    ))
+    .await;
+    let bing = ratatoskr::vertical::bing::Bing::with_site(browser::client(Duration::from_secs(5)), &site).news();
+    let news = bing.search(&ratatoskr::SearchRequest::new("raspberry pi", 2)).await.unwrap();
+    assert_eq!(news.len(), 2);
+    assert!(news[0].url.starts_with("https://www.msn.com/"));
+}

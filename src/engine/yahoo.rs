@@ -104,9 +104,9 @@ pub fn parse(page: &str, limit: usize) -> Result<Vec<Hit>, EngineError> {
     Ok(hits)
 }
 
-/// The destination of a result link: Yahoo's redirect unwrapped (`/RU=<url>/RK=`),
-/// ad click-throughs dropped.
-fn real_url(href: &str) -> Option<String> {
+/// The destination of a result link (web or news): Yahoo's redirect unwrapped
+/// (`/RU=<url>/RK=`), ad click-throughs dropped.
+pub(crate) fn real_url(href: &str) -> Option<String> {
     if href.contains("bing.com/aclick") || href.contains("/cbclk") {
         return None;
     }

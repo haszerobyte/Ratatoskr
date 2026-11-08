@@ -197,15 +197,12 @@ impl Verticals {
         let t = settings.timeout;
         Self {
             news: vec![
-                Arc::new(duckduckgo::News(duckduckgo::DuckDuckGo::new(t))),
-                Arc::new(bing::News(bing::Bing::new(t))),
+                Arc::new(duckduckgo::DuckDuckGo::new(t).news()),
+                Arc::new(bing::Bing::new(t).news()),
                 Arc::new(yahoo::News(yahoo::Yahoo::new(t))),
             ],
-            images: vec![
-                Arc::new(bing::Images(bing::Bing::new(t))),
-                Arc::new(duckduckgo::Images(duckduckgo::DuckDuckGo::new(t))),
-            ],
-            videos: vec![Arc::new(duckduckgo::Videos(duckduckgo::DuckDuckGo::new(t)))],
+            images: vec![Arc::new(bing::Bing::new(t).images()), Arc::new(duckduckgo::DuckDuckGo::new(t).images())],
+            videos: vec![Arc::new(duckduckgo::DuckDuckGo::new(t).videos())],
             books: vec![Arc::new(openlibrary::OpenLibrary::new(engine::http_client(t)))],
         }
     }
