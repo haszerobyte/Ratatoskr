@@ -179,7 +179,31 @@ const MAX_REDIRECTS: usize = 5;
 pub struct Fetcher {
     /// Chrome first; Firefox for the one retry.
     http: [wreq::Client; 2],
+    /// Ratatoskr's own User-Agent, for the sites that ask automated clients
+    /// to identify themselves ([`identify_to`]).
+    honest: wreq::Client,
     allow_private: bool,
+}
+
+/// Wikimedia's sites, whose User-Agent policy asks automated clients to say
+/// who they are (https://meta.wikimedia.org/wiki/User-Agent_policy), and which
+/// rate-limit an impersonated browser: a few fetches in a row of Wikipedia
+/// articles as Chrome were each answered HTTP 429, while the same pages came
+/// at once to an identified client.
+pub fn identify_to(host: &str) -> bool {
+    const WIKIMEDIA: [&str; 9] = [
+        "wikipedia.org",
+        "wikimedia.org",
+        "wikidata.org",
+        "wiktionary.org",
+        "wikibooks.org",
+        "wikiquote.org",
+        "wikisource.org",
+        "wikivoyage.org",
+        "wikinews.org",
+    ];
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+    WIKIMEDIA.iter().any(|site| host == *site || host.ends_with(&format!(".{site}")))
 }
 
 impl Fetcher {
@@ -217,8 +241,17 @@ impl Fetcher {
             }
             builder.build().expect("http client")
         };
+        let mut honest = wreq::Client::builder()
+            .user_agent(crate::user_agent())
+            .timeout(timeout)
+            .redirect(redirects.clone())
+            .no_proxy();
+        if !allow_private {
+            honest = honest.dns_resolver(Arc::new(PublicOnly));
+        }
         Self {
             http: [client(Profile::Chrome149, Platform::Linux), client(Profile::Firefox151, Platform::Linux)],
+            honest: honest.build().expect("http client"),
             allow_private,
         }
     }
@@ -231,6 +264,15 @@ impl Fetcher {
         check_url(&url, self.allow_private)?;
         // Shared with the retry, so a cookie the first attempt got goes back.
         let jar = Arc::new(wreq::cookie::Jar::default());
+        if url.host_str().is_some_and(identify_to) {
+            return match self.attempt(&self.honest, &url, &jar).await {
+                Err(Failed { retry_after: Some(wait), .. }) if wait <= MAX_RETRY_AFTER => {
+                    tokio::time::sleep(wait).await;
+                    self.attempt(&self.honest, &url, &jar).await.map_err(|failed| failed.error)
+                }
+                other => other.map_err(|failed| failed.error),
+            };
+        }
         match self.attempt(&self.http[0], &url, &jar).await {
             Err(Failed { error: first @ (FetchError::Challenge(_) | FetchError::Http(403)), .. }) => {
                 match self.attempt(&self.http[1], &url, &jar).await {
@@ -414,6 +456,18 @@ mod tests {
     use std::net::{Ipv4Addr, Ipv6Addr};
 
     use super::*;
+
+    #[test]
+    fn wikimedia_sites_are_asked_as_ratatoskr() {
+        for host in
+            ["en.wikipedia.org", "wikipedia.org", "upload.wikimedia.org", "www.wikidata.org", "EN.WIKTIONARY.ORG."]
+        {
+            assert!(identify_to(host), "{host}");
+        }
+        for host in ["notwikipedia.org", "wikipedia.org.evil.example", "www.cricbuzz.com"] {
+            assert!(!identify_to(host), "{host}");
+        }
+    }
 
     #[test]
     fn only_public_unicast_is_public() {

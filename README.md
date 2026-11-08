@@ -33,6 +33,7 @@ squirrel who runs messages up and down the world tree.
 - [Configuration](#configuration)
 - [How search works](#how-search-works)
 - [How fetch works](#how-fetch-works)
+- [Performance](#performance)
 - [Politeness, presentation and terms](#politeness-presentation-and-terms)
 - [Building from source](#building-from-source)
 - [Contributing](#contributing)
@@ -61,6 +62,9 @@ squirrel who runs messages up and down the world tree.
 - **SSRF-safe fetching:** private, loopback and link-local addresses are
   refused, at connect time and on every redirect.
 - **Cached:** a repeated question within 15 minutes never leaves the machine.
+- **Small and fast:** one 10 MB binary. As an MCP server it uses about 6 MB at
+  idle and answers in 0.01 s, against ~90 MB and 1–4 s for the Python
+  alternatives (see [Performance](#performance)).
 
 ## Install
 
@@ -316,6 +320,52 @@ pages as an answer: the next source gets its turn.
 - **Proxies:** environment proxies (`HTTP(S)_PROXY`) are ignored, since a proxy
   would bypass the address checks.
 
+## Performance
+
+ratatoskr compared with [ddgs](https://github.com/deedy5/ddgs) 9.14.4 (Python,
+search and fetch) and the reference MCP fetch server
+[`mcp-server-fetch`](https://github.com/modelcontextprotocol/servers/tree/main/src/fetch)
+2026.11.4 (Python, fetch only).
+
+**Setup:**
+- Apple M4 Pro, macOS 26.7, ratatoskr 0.1.0 release build;
+- each tool runs in its own fresh process;
+- the runs are interleaved, so every tool sees the same network;
+- times are medians.
+
+**Command line**, one process per request (5 searches, 3 fetches):
+
+| | ratatoskr | ddgs |
+|---|---|---|
+| search: time | **1.13 s** | 2.45 s |
+| search: peak memory | **19 MB** | 72 MB |
+| fetch: time | **0.33 s** | 0.47 s |
+| fetch: peak memory | **17 MB** | 71 MB |
+
+**As an MCP server**, 5 calls each:
+
+| | ratatoskr `web_search` | ddgs `search_text` | ratatoskr `web_fetch` | mcp-server-fetch `fetch` |
+|---|---|---|---|---|
+| ready to answer | **0.01 s** | 1.47 s | **0.01 s** | 3.58 s |
+| memory at idle | **6 MB** | 90 MB | **6 MB** | 95 MB |
+| memory after the calls | **20 MB** | 102 MB | **44 MB** | 143 MB |
+| time per call (median) | **1.06 s** | 2.93 s | **0.11 s** | 1.59 s |
+
+**Install size:**
+
+| | Size |
+|---|---|
+| ratatoskr (one static binary, search and fetch) | **9.8 MB** |
+| ddgs environment, with its MCP server | 73.5 MB |
+| mcp-server-fetch environment | 83.9 MB |
+
+Search time is mostly the search engines' own response time. It varies with
+your network and location, and from hour to hour. Memory and startup barely
+vary.
+
+Reproduce it with `bench/compare.sh [path/to/ratatoskr]`. It needs `uv` and
+`python3`, and installs the Python tools into a throwaway environment.
+
 ## Politeness, presentation and terms
 
 Ratatoskr is meant for an agent answering one person's questions, not for
@@ -334,8 +384,14 @@ The scraped engines and page fetches present as a real browser, using
   Windows;
 - each search starts a fresh browser profile with its own cookies.
 
-Many sites refuse anything else. The API engines identify themselves honestly
-instead.
+Many sites refuse anything else.
+
+Some sites get ratatoskr's own, honest User-Agent instead:
+- the API engines;
+- Wikimedia's sites (Wikipedia, Wikidata, Wiktionary, …). Their
+  [User-Agent policy](https://meta.wikimedia.org/wiki/User-Agent_policy) asks
+  automated clients to identify themselves, and they rate-limit an
+  impersonated browser.
 
 Scraping search engines may be against their terms of service, and some sites'
 terms forbid automated access. You are responsible for how you use this
@@ -361,8 +417,8 @@ cargo test                     # offline: tests use recorded pages and local fak
 ```
 
 CI builds and tests on Linux (x86_64, aarch64), macOS (Intel, Apple Silicon) and
-Windows. Tagging a version (`git tag v0.1.0 && git push --tags`) builds release
-binaries for all of them.
+Windows. Releases are published by hand, and only after CI passes (see
+[Contributing](#contributing)).
 
 ## Contributing
 
@@ -373,6 +429,17 @@ cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
 ```
+
+To publish a release:
+1. bump `version` in `Cargo.toml` and merge it;
+2. run **Actions → Release → Run workflow** with that version.
+
+The workflow then runs in order, stopping at the first failure:
+- checks that the version matches `Cargo.toml` and isn't released yet;
+- runs the full CI on every platform;
+- builds the binaries;
+- tags the tested commit `v<version>` and publishes a GitHub release with
+  SHA-256 checksums.
 
 Search engines change their pages. When an engine stops parsing:
 1. capture a fresh results page into `tests/fixtures/`;

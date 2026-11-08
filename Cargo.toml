@@ -33,3 +33,10 @@ wreq-util = { version = "=3.0.0-rc.14", default-features = false, features = ["e
 
 [dev-dependencies]
 axum = "0.8"
+
+# A smaller, faster command-line tool and MCP server: whole-program
+# optimisation and no symbols in the shipped binary.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

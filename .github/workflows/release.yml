@@ -1,41 +1,71 @@
 name: Release
 
-# Push a tag like v0.1.0: the `ratatoskr` command-line tool is built for each
-# platform below and attached, with checksums, to a GitHub release.
+# Started by hand (Actions → Release → Run workflow) with the version to
+# publish. It publishes only when everything before it passes:
+#   1. the version matches Cargo.toml, and its tag does not exist yet;
+#   2. CI passes: fmt, clippy, and the tests on every platform;
+#   3. the `ratatoskr` command-line tool builds for every platform below.
+# Then it tags the tested commit v<version> and publishes a GitHub release
+# with the binaries and their SHA-256 checksums.
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Existing tag to (re)build, e.g. v0.1.0"
+      version:
+        description: "Version to publish, as in Cargo.toml (e.g. 0.1.0)"
         required: true
+      prerelease:
+        description: "Mark the release as a pre-release"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 env:
   CARGO_TERM_COLOR: always
-  TAG: ${{ inputs.tag || github.ref_name }}
+  TAG: v${{ inputs.version }}
 
 jobs:
+  check:
+    name: check the version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: The version is Cargo.toml's and is not released yet
+        run: |
+          declared=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if [ "$declared" != "${{ inputs.version }}" ]; then
+            echo "::error::Cargo.toml says $declared, not ${{ inputs.version }}: bump it first"; exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::$TAG already exists"; exit 1
+          fi
+
+  ci:
+    name: CI
+    needs: check
+    uses: ./.github/workflows/ci.yml
+
   build:
     name: build (${{ matrix.target }})
+    needs: ci
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
         include:
           # Ubuntu 22.04's glibc (2.35), so the binaries run on older distributions too.
-          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04, archive: tar.gz }
-          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm, archive: tar.gz }
-          - { target: x86_64-apple-darwin, os: macos-13, archive: tar.gz }
-          - { target: aarch64-apple-darwin, os: macos-15, archive: tar.gz }
-          - { target: x86_64-pc-windows-msvc, os: windows-2025, archive: zip }
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04, archive: tar.gz, experimental: false }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm, archive: tar.gz, experimental: false }
+          - { target: x86_64-apple-darwin, os: macos-13, archive: tar.gz, experimental: false }
+          - { target: aarch64-apple-darwin, os: macos-15, archive: tar.gz, experimental: false }
+          # As in CI: published when it builds, not yet required to.
+          - { target: x86_64-pc-windows-msvc, os: windows-2025, archive: zip, experimental: true }
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.TAG }}
       - name: Build tools (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y cmake clang libclang-dev
@@ -72,7 +102,7 @@ jobs:
           path: ${{ env.ASSET }}
 
   publish:
-    name: publish the release
+    name: tag and publish
     needs: build
     runs-on: ubuntu-24.04
     steps:
@@ -80,12 +110,16 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Every required platform built
+        run: |
+          for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-apple-darwin aarch64-apple-darwin; do
+            ls dist/*"$target"* >/dev/null 2>&1 || { echo "::error::no $target build"; exit 1; }
+          done
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
-      - name: Create or update the release
+      - name: Tag the tested commit and publish the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
-            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "ratatoskr $TAG" --generate-notes
-          gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "ratatoskr $TAG" --generate-notes ${{ inputs.prerelease && '--prerelease' || '' }}
