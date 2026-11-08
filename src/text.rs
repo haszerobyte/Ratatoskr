@@ -460,4 +460,32 @@ mod tests {
             "Structured data on the page:\nname: X News\nheadline: Pakistan U19 beat India"
         );
     }
+
+    /// Real pages, trimmed (scripts, styles and unused attributes cut, the
+    /// structure kept): what a reader came for must come through. Captured
+    /// 2026-11-08.
+    #[test]
+    fn real_pages_keep_what_a_reader_came_for() {
+        // A scores page: its header ticker and its match list, which reading
+        // only a main element lost.
+        let (_, scores) = html_to_text(include_str!("../tests/fixtures/pages/live_scores.html"), None);
+        for fact in [
+            "RDC vs ARA - ARA won",
+            "INDU19 vs PAKU19 - PAKU19 won",
+            "Royal Desert Champions vs Arabian Aces",
+            "112-6 (10)",
+        ] {
+            assert!(scores.contains(fact), "the scores page lost {fact:?}");
+        }
+        // A docs page: its code, fenced and indented as written.
+        let (_, docs) = html_to_text(include_str!("../tests/fixtures/pages/docs_macro.html"), None);
+        assert!(
+            docs.contains("```\nmacro_rules! select {\n    {\n        $(\n            biased;"),
+            "the docs page's code lost its shape"
+        );
+        // An encyclopedia article: its prose.
+        let (title, article) = html_to_text(include_str!("../tests/fixtures/pages/encyclopedia_article.html"), None);
+        assert!(title.is_some_and(|t| t.contains("Ratatoskr")));
+        assert!(article.contains("Ratatoskr runs up and down Yggdrasil"));
+    }
 }
