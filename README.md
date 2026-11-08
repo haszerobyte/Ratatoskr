@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/haszerobyte/ratatoskr/actions/workflows/ci.yml"><img src="https://github.com/haszerobyte/ratatoskr/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/haszerobyte/Ratatoskr/actions/workflows/ci.yml"><img src="https://github.com/haszerobyte/Ratatoskr/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://crates.io/crates/ratatoskr-web"><img src="https://img.shields.io/crates/v/ratatoskr-web" alt="crates.io"></a>
   <a href="https://docs.rs/ratatoskr-web"><img src="https://img.shields.io/docsrs/ratatoskr-web" alt="docs.rs"></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue" alt="License: MIT OR Apache-2.0"></a>
@@ -84,7 +84,7 @@ use ratatoskr::{Ratatoskr, Sources};
 
 As a command-line tool, either:
 - download a binary from the
-  [releases](https://github.com/haszerobyte/ratatoskr/releases) (Linux
+  [releases](https://github.com/haszerobyte/Ratatoskr/releases) (Linux
   x86_64/aarch64, macOS Intel/Apple Silicon, Windows x86_64), with SHA-256
   checksums in `SHA256SUMS`; or
 - install it from crates.io:
@@ -416,7 +416,7 @@ up automatically. wreq links BoringSSL, which needs:
 | Windows | Visual Studio Build Tools, CMake, [NASM](https://nasm.us) and LLVM (`LIBCLANG_PATH`) |
 
 ```sh
-git clone https://github.com/haszerobyte/ratatoskr
+git clone https://github.com/haszerobyte/Ratatoskr
 cd ratatoskr
 cargo build --release          # target/release/ratatoskr
 cargo test                     # offline: tests use recorded pages and local fake servers
