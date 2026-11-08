@@ -1,8 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title desc">
   <title id="title">ratatoskr</title>
-  <desc id="desc">A squirrel in silhouette, sitting up on a branch with a red byte held to its mouth, inside a black badge with a red ring.</desc>
+  <desc id="desc">The name ratatoskr, after a red terminal prompt, set under a squirrel in silhouette, sitting up on a branch with a red byte held to its mouth, inside a black badge with a red ring.</desc>
   <circle cx="128" cy="128" r="124" fill="#0b0b0d"/>
   <circle cx="128" cy="128" r="116" fill="none" stroke="#e5323b" stroke-width="2.5"/>
+  <g transform="translate(128 84) scale(0.78) translate(-128 -84)">
   <g transform="translate(-2 4)">
     <path d="M56 192 H 204" stroke="#34353a" stroke-width="5" stroke-linecap="round"/>
     <!-- tail: bushy, up the back, the tip curling forward -->
@@ -24,4 +25,7 @@
     <!-- forepaws over it -->
     <path d="M171 120 C 175 114, 179 110, 185 109" fill="none" stroke="#ecedef" stroke-width="7" stroke-linecap="round"/>
   </g>
+  </g>
+  <!-- the name, set straight under the squirrel -->
+  <text x="128" y="212" text-anchor="middle" font-family="ui-monospace, 'JetBrains Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="18" font-weight="700" letter-spacing="1"><tspan fill="#e5323b">&gt;_</tspan><tspan fill="#ecedef" dx="6">ratatoskr</tspan></text>
 </svg>
