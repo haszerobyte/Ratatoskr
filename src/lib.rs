@@ -6,7 +6,8 @@
 //! answer: its own meta-search first (Wikipedia's and Grokipedia's best page,
 //! and Yahoo, DuckDuckGo and Yandex in a shuffled order, two at a time, each
 //! search from a fresh browser, merged and ranked; see [`engine::meta`]),
-//! then Brave's and Google's official APIs when keyed,
+//! then an external search server if configured, Brave's and Google's
+//! official APIs when keyed,
 //! and Wikipedia last — an encyclopedia, not web search, kept only for plain
 //! facts when nothing else answers. [`Ratatoskr::fetch`] reads a page as text.
 //!
@@ -30,7 +31,7 @@ use engine::{Engine, Hit};
 use polite::{Cache, CircuitBreaker, RateLimiter};
 
 /// The User-Agent of the API engines (Wikipedia, Grokipedia, Brave's and
-/// Google's APIs): who is asking, not a browser. The scraped
+/// Google's APIs, a search server): who is asking, not a browser. The scraped
 /// engines and page fetches present as a browser instead ([`engine::browser`]).
 ///
 /// An API operator who sees this traffic should be able to reach whoever runs
@@ -107,6 +108,8 @@ impl Default for Settings {
 /// Wikipedia (last) need nothing and are always present.
 #[derive(Clone, Debug, Default)]
 pub struct Sources {
+    /// An external search server ([`engine::search_api`]), e.g. `http://127.0.0.1:8765`.
+    pub search_api_url: Option<String>,
     pub brave_key: Option<String>,
     pub google_key: Option<String>,
     /// Google's Programmable Search Engine id.
@@ -114,10 +117,11 @@ pub struct Sources {
 }
 
 impl Sources {
-    /// From BRAVE_SEARCH_API_KEY, GOOGLE_CSE_KEY, GOOGLE_CSE_ID.
+    /// From SEARCH_API_URL, BRAVE_SEARCH_API_KEY, GOOGLE_CSE_KEY, GOOGLE_CSE_ID.
     pub fn from_env() -> Self {
         let var = |key: &str| std::env::var(key).ok().filter(|v| !v.trim().is_empty());
         Self {
+            search_api_url: var("SEARCH_API_URL"),
             brave_key: var("BRAVE_SEARCH_API_KEY"),
             google_key: var("GOOGLE_CSE_KEY"),
             google_cx: var("GOOGLE_CSE_ID"),
@@ -174,6 +178,9 @@ impl Ratatoskr {
         ];
         let mut engines: Vec<Arc<dyn Engine>> =
             vec![Arc::new(engine::meta::Meta::new(meta, settings.cooldown, settings.min_interval))];
+        if let Some(base) = sources.search_api_url.as_deref().filter(|u| !u.trim().is_empty()) {
+            engines.push(Arc::new(engine::search_api::SearchApi::new(http.clone(), base.trim())));
+        }
         if let Some(key) = sources.brave_key.as_deref().filter(|k| !k.trim().is_empty()) {
             engines.push(Arc::new(engine::brave::Brave::new(http.clone(), key.trim())));
         }

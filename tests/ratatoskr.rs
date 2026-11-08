@@ -637,3 +637,22 @@ async fn wikipedias_best_page_is_a_title_match_or_nothing() {
     assert_eq!(hits[0].snippet, "Raspberry Pi OS is an operating system.");
     assert_eq!(engine.search("tokio select macro", 5).await.unwrap(), vec![]);
 }
+
+/// The external search server fallback (SEARCH_API_URL): the query goes as
+/// JSON, and the server's results come back as hits.
+#[tokio::test]
+async fn an_external_search_server_answers_as_a_source() {
+    let site = serve(Router::new().route(
+        "/search/text",
+        post(|axum::Json(body): axum::Json<serde_json::Value>| async move {
+            assert_eq!((body["query"].as_str(), body["max_results"].as_u64()), (Some("rust"), Some(3)));
+            axum::Json(json!({"results": [{"title": "Rust", "href": "https://rust-lang.org/", "body": "A language"}]}))
+        }),
+    ))
+    .await;
+    let engine =
+        ratatoskr::engine::search_api::SearchApi::new(http_client(Duration::from_secs(5)), &format!("{site}/"));
+    let hits = engine.search("rust", 3).await.unwrap();
+    assert_eq!(hits[0].url, "https://rust-lang.org/");
+    assert_eq!(engine.name(), "search-api");
+}

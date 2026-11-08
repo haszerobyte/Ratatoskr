@@ -2,11 +2,8 @@ ratatoskr
 Copyright 2026 haszerobyte
 Licensed under the Apache License, Version 2.0 (see LICENSE).
 
-This software ports parts of ddgs (https://github.com/deedy5/ddgs), version
-9.14: the Yahoo, DuckDuckGo, Yandex, Wikipedia and Grokipedia engines' request
-payloads and result selectors, the "auto" backend's engine scheduling and
-result aggregation, and SimpleFilterRanker's ranking. ddgs is distributed under
-the following license:
+Parts of this software are derived from software distributed under the
+following license:
 
 MIT License
 

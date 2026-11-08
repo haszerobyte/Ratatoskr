@@ -6,6 +6,7 @@ pub mod duckduckgo;
 pub mod google;
 pub mod grokipedia;
 pub mod meta;
+pub mod search_api;
 pub mod wikipedia;
 pub mod yahoo;
 pub mod yandex;

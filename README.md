@@ -272,6 +272,7 @@ Everything is optional.
 
 | Variable | Effect |
 |---|---|
+| `SEARCH_API_URL` | an external search server, used after the meta-search: it answers `POST /search/text` (`{"query", "max_results"}`) with `{"results": [{"title", "href", "body"}]}`. Bind it to loopback. |
 | `BRAVE_SEARCH_API_KEY` | Brave Search API, as a fallback |
 | `GOOGLE_CSE_KEY`, `GOOGLE_CSE_ID` | Google Programmable Search, as a fallback (both needed) |
 | `RATATOSKR_CONTACT` | a URL or email appended to the API engines' User-Agent, so their operators can reach you |
@@ -300,8 +301,9 @@ Defaults (`Settings::default()`):
    - results are de-duplicated by URL;
    - those several engines found come first, then Wikipedia pages, then by
      where the query's words appear (title and snippet, title, snippet).
-2. **Brave's and Google's APIs**, if keyed.
-3. **Wikipedia's full-text search.**
+2. **An external search server** (`SEARCH_API_URL`), if configured.
+3. **Brave's and Google's APIs**, if keyed.
+4. **Wikipedia's full-text search.**
 
 If no web engine answers, the meta-search doesn't pass off the encyclopedia
 pages as an answer: the next source gets its turn.
