@@ -18,13 +18,16 @@ Ratatoskr gives an agent its `web_search` and `web_fetch` tools:
 - **Fetch:** reads a page as clean, link-preserving text.
 - **Safety:** a fetch can never reach your local network.
 
-It is a library and a small command-line tool. In Norse myth, Ratatoskr is the
+It is an [MCP server](#mcp-server) for any agent (Claude Code, Codex, Claude
+Desktop, Cursor, VS Code, …), a Rust library, and a small command-line tool.
+In Norse myth, Ratatoskr is the
 squirrel who runs messages up and down the world tree.
 
 ## Contents
 
 - [Features](#features)
 - [Install](#install)
+- [MCP server](#mcp-server)
 - [Command line](#command-line)
 - [Library](#library)
 - [Configuration](#configuration)
@@ -37,6 +40,8 @@ squirrel who runs messages up and down the world tree.
 
 ## Features
 
+- **An MCP server out of the box:** `ratatoskr mcp` gives any MCP client
+  `web_search` and `web_fetch`.
 - **No API key needed.** Search works out of the box. Brave's and Google's APIs
   are optional fallbacks.
 - **Meta-search** modelled on [ddgs](https://github.com/deedy5/ddgs)'s `auto`
@@ -80,11 +85,72 @@ cargo install --git https://github.com/haszerobyte/ratatoskr --locked
 
 Building needs `cmake` and libclang; see [Building from source](#building-from-source).
 
+## MCP server
+
+`ratatoskr mcp` serves two tools to an MCP client over stdio:
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `web_search` | `query` (required), `limit` (1–20, default 8), `country` (ISO code, optional) | a numbered list: title, URL, snippet |
+| `web_fetch` | `url` (required) | the page's title, URL and text, links as `[text](url)` |
+
+Install the binary first (see [Install](#install)), then add it to your client.
+If `ratatoskr` isn't on the client's `PATH`, give its full path instead.
+
+**Claude Code**
+
+```sh
+claude mcp add ratatoskr -- ratatoskr mcp
+# with an optional fallback key:
+claude mcp add ratatoskr -e BRAVE_SEARCH_API_KEY=… -- ratatoskr mcp
+```
+
+**Codex** (`~/.codex/config.toml`)
+
+```toml
+[mcp_servers.ratatoskr]
+command = "ratatoskr"
+args = ["mcp"]
+# env = { BRAVE_SEARCH_API_KEY = "…" }
+```
+
+**Claude Desktop** (`claude_desktop_config.json`), **Cursor** (`~/.cursor/mcp.json`)
+and most other clients
+
+```json
+{
+  "mcpServers": {
+    "ratatoskr": { "command": "ratatoskr", "args": ["mcp"] }
+  }
+}
+```
+
+**VS Code** (`.vscode/mcp.json`)
+
+```json
+{
+  "servers": {
+    "ratatoskr": { "type": "stdio", "command": "ratatoskr", "args": ["mcp"] }
+  }
+}
+```
+
+The tools then show up as `web_search` and `web_fetch` (Claude Code names them
+`mcp__ratatoskr__web_search` and `mcp__ratatoskr__web_fetch`). Requests are
+answered concurrently, and a failed search or fetch comes back as a tool error
+the model can read, never as a crash. The protocol revisions it speaks are
+`2025-06-18`, `2025-03-26` and `2024-11-05`.
+
+Embedding the server in your own program is one call:
+`ratatoskr::mcp::serve_stdio(Arc::new(rt)).await`, or `ratatoskr::mcp::serve`
+over any reader and writer.
+
 ## Command line
 
 ```sh
 ratatoskr search <query> [limit] [country]
 ratatoskr fetch <url>
+ratatoskr mcp                  # the MCP server, on stdin/stdout
 ```
 
 ```console

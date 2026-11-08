@@ -1,6 +1,8 @@
-//! ratatoskr search <query> [limit] [country] | ratatoskr fetch <url>
-//! For trying the crate by hand; engines come from the environment
-//! (DDGS_API_URL, BRAVE_SEARCH_API_KEY, GOOGLE_CSE_KEY + GOOGLE_CSE_ID).
+//! ratatoskr search <query> [limit] [country] | ratatoskr fetch <url> | ratatoskr mcp
+//! `mcp` serves the web_search and web_fetch tools to an MCP client over
+//! stdio; the others are for using the crate by hand. Optional sources come
+//! from the environment (DDGS_API_URL, BRAVE_SEARCH_API_KEY, GOOGLE_CSE_KEY +
+//! GOOGLE_CSE_ID).
 
 use ratatoskr::{Ratatoskr, Sources};
 
@@ -9,6 +11,13 @@ async fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let rt = Ratatoskr::standard(&Sources::from_env());
     match args.first().map(String::as_str) {
+        Some("mcp") if args.len() == 1 => match ratatoskr::mcp::serve_stdio(std::sync::Arc::new(rt)).await {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("ratatoskr mcp: {error}");
+                std::process::ExitCode::FAILURE
+            }
+        },
         Some("search") if args.len() >= 2 => {
             let limit = args.get(2).and_then(|n| n.parse().ok()).unwrap_or(5);
             match rt.search_in(&args[1], limit, args.get(3).map(String::as_str)).await {
@@ -42,7 +51,7 @@ async fn main() -> std::process::ExitCode {
             }
         },
         _ => {
-            eprintln!("usage: ratatoskr search <query> [limit] [country] | ratatoskr fetch <url>");
+            eprintln!("usage: ratatoskr search <query> [limit] [country] | ratatoskr fetch <url> | ratatoskr mcp");
             std::process::ExitCode::from(2)
         }
     }
