@@ -1,1 +1,6 @@
 /target
+
+# Local agent instructions: identity, privacy and secrets rules for this
+# machine. Never committed.
+AGENTS.md
+CLAUDE.md

@@ -1,13 +1,23 @@
 [package]
-name = "ratatoskr"
+# "ratatoskr" is taken on crates.io; the library is still `ratatoskr` in code
+# (`use ratatoskr::…`) and the binary is still `ratatoskr`.
+name = "ratatoskr-web"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "Polite web search and fetch for LLM tools: ddgs-style meta-search (Yahoo, DuckDuckGo, Yandex, Wikipedia, Grokipedia) and keyed APIs behind one interface, with rate limits, circuit breakers, caching and an SSRF-safe fetcher"
+description = "Web search and page fetching for LLM tools: a keyless meta-search (Yahoo, DuckDuckGo, Yandex, Wikipedia, Grokipedia), an SSRF-safe fetcher, and an MCP server"
+repository = "https://github.com/haszerobyte/ratatoskr"
+homepage = "https://github.com/haszerobyte/ratatoskr"
+documentation = "https://docs.rs/ratatoskr-web"
 readme = "README.md"
-keywords = ["search", "web-fetch", "llm", "scraping", "ddgs"]
-categories = ["web-programming::http-client", "text-processing"]
-publish = false
+keywords = ["search", "web-fetch", "llm", "mcp", "agent"]
+categories = ["web-programming::http-client", "text-processing", "command-line-utilities"]
+# What crates.io gets: the source, its tests and fixtures, and the docs; not
+# the workflows, the benchmark script or the logo.
+include = ["src/**/*", "tests/**/*", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE-MIT", "LICENSE-APACHE", "NOTICE"]
+
+[lib]
+name = "ratatoskr"
 
 [[bin]]
 name = "ratatoskr"

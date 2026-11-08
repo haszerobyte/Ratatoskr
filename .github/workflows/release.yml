@@ -2,11 +2,16 @@ name: Release
 
 # Started by hand (Actions → Release → Run workflow) with the version to
 # publish. It publishes only when everything before it passes:
-#   1. the version matches Cargo.toml, and its tag does not exist yet;
+#   1. the version matches Cargo.toml, is on neither GitHub nor crates.io yet,
+#      and the crate packages (`cargo publish --dry-run`);
 #   2. CI passes: fmt, clippy, and the tests on every platform;
 #   3. the `ratatoskr` command-line tool builds for every platform below.
-# Then it tags the tested commit v<version> and publishes a GitHub release
-# with the binaries and their SHA-256 checksums.
+# Then it publishes ratatoskr-web to crates.io, tags the tested commit
+# v<version>, and publishes a GitHub release with the binaries and their
+# SHA-256 checksums.
+#
+# Needs the repository secret CARGO_REGISTRY_TOKEN: a crates.io API token
+# with the publish-new and publish-update scopes.
 on:
   workflow_dispatch:
     inputs:
@@ -42,6 +47,23 @@ jobs:
           if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
             echo "::error::$TAG already exists"; exit 1
           fi
+          crate=$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          status=$(curl -s -o /dev/null -w "%{http_code}" -A "ratatoskr release check" \
+            "https://crates.io/api/v1/crates/$crate/${{ inputs.version }}")
+          if [ "$status" = 200 ]; then
+            echo "::error::$crate ${{ inputs.version }} is already on crates.io"; exit 1
+          fi
+      - name: The publishing token is set
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          [ -n "$CARGO_REGISTRY_TOKEN" ] || { echo "::error::set the CARGO_REGISTRY_TOKEN repository secret"; exit 1; }
+      - name: Build tools (BoringSSL needs cmake and libclang)
+        run: sudo apt-get update && sudo apt-get install -y cmake clang libclang-dev
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup toolchain install && rustup show active-toolchain
+      - name: The crate packages and builds as crates.io will
+        run: cargo publish --dry-run --locked
 
   ci:
     name: CI
@@ -102,24 +124,35 @@ jobs:
           path: ${{ env.ASSET }}
 
   publish:
-    name: tag and publish
+    name: publish to crates.io and GitHub
     needs: build
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          path: dist
+          path: ${{ runner.temp }}/dist
           merge-multiple: true
       - name: Every required platform built
         run: |
           for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-apple-darwin aarch64-apple-darwin; do
-            ls dist/*"$target"* >/dev/null 2>&1 || { echo "::error::no $target build"; exit 1; }
+            ls "$RUNNER_TEMP"/dist/*"$target"* >/dev/null 2>&1 || { echo "::error::no $target build"; exit 1; }
           done
       - name: Checksums
-        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+        run: cd "$RUNNER_TEMP/dist" && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - name: Build tools (BoringSSL needs cmake and libclang)
+        run: sudo apt-get update && sudo apt-get install -y cmake clang libclang-dev
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup toolchain install && rustup show active-toolchain
+      # crates.io first: a published version can never be replaced, so the
+      # GitHub release (which can be redone) comes after it.
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --locked
       - name: Tag the tested commit and publish the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+          gh release create "$TAG" "$RUNNER_TEMP"/dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "ratatoskr $TAG" --generate-notes ${{ inputs.prerelease && '--prerelease' || '' }}

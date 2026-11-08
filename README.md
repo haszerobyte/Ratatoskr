@@ -10,6 +10,8 @@
 
 <p align="center">
   <a href="https://github.com/haszerobyte/ratatoskr/actions/workflows/ci.yml"><img src="https://github.com/haszerobyte/ratatoskr/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://crates.io/crates/ratatoskr-web"><img src="https://img.shields.io/crates/v/ratatoskr-web" alt="crates.io"></a>
+  <a href="https://docs.rs/ratatoskr-web"><img src="https://img.shields.io/docsrs/ratatoskr-web" alt="docs.rs"></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue" alt="License: MIT OR Apache-2.0"></a>
 </p>
 
@@ -68,12 +70,16 @@ squirrel who runs messages up and down the world tree.
 
 ## Install
 
-As a library, from Git:
+As a library, from crates.io. The package is `ratatoskr-web` (the name
+`ratatoskr` was taken); in code it is `ratatoskr`:
 
-```toml
-[dependencies]
-ratatoskr = { git = "https://github.com/haszerobyte/ratatoskr", tag = "v0.1.0" }
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+```sh
+cargo add ratatoskr-web
+cargo add tokio --features macros,rt-multi-thread
+```
+
+```rust
+use ratatoskr::{Ratatoskr, Sources};
 ```
 
 As a command-line tool, either:
@@ -81,10 +87,10 @@ As a command-line tool, either:
   [releases](https://github.com/haszerobyte/ratatoskr/releases) (Linux
   x86_64/aarch64, macOS Intel/Apple Silicon, Windows x86_64), with SHA-256
   checksums in `SHA256SUMS`; or
-- build it yourself:
+- install it from crates.io:
 
 ```sh
-cargo install --git https://github.com/haszerobyte/ratatoskr --locked
+cargo install ratatoskr-web --locked     # installs the `ratatoskr` command
 ```
 
 Building needs `cmake` and libclang; see [Building from source](#building-from-source).
@@ -435,11 +441,16 @@ To publish a release:
 2. run **Actions → Release → Run workflow** with that version.
 
 The workflow then runs in order, stopping at the first failure:
-- checks that the version matches `Cargo.toml` and isn't released yet;
+- checks that the version matches `Cargo.toml` and is on neither GitHub nor
+  crates.io yet, and that the crate packages (`cargo publish --dry-run`);
 - runs the full CI on every platform;
 - builds the binaries;
+- publishes `ratatoskr-web` to crates.io;
 - tags the tested commit `v<version>` and publishes a GitHub release with
   SHA-256 checksums.
+
+It needs one repository secret: `CARGO_REGISTRY_TOKEN`, a crates.io API token
+with the publish-new and publish-update scopes.
 
 Search engines change their pages. When an engine stops parsing:
 1. capture a fresh results page into `tests/fixtures/`;
