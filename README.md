@@ -413,11 +413,10 @@ Some engines aren't used:
 ### Fetch
 
 - **Which part of the page:**
-  - the page's `<main>` (or its single `<article>`), without the menus,
-    header and footer around it, when that holds at least half of the page's
-    text, as an article's does;
-  - otherwise the whole body, menus and sidebars included: on a listing, a
-    scoreboard or a search page, the items often sit there;
+  - all of it that a reader sees, menus, header, sidebars and footer
+    included: no guess at the "main content", which on a scoreboard, a
+    listing or a search page drops the items it holds; scripts, styles and
+    a drop-down's unchosen options are left out;
   - a page rendered by script, with almost no text, adds the text fields of
     its JSON-LD data.
 - **Formats:**

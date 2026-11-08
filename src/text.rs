@@ -4,26 +4,20 @@
 //! model: without them a page's "Scorecard" or "Next page" could not be
 //! followed.
 //!
-//! Which part of the page: its `<main>` (or its one `<article>`) without the
-//! navigation chrome around it, when that element carries most of the page's
-//! text, as an article's does. Otherwise the whole body, chrome included:
-//! on a listing, a scoreboard, a search or an index page the items live in
-//! headers, sidebars and tickers, and a page of several `<article>` cards
-//! is all cards. A page that is a script shell with little text gives the
-//! model its JSON-LD data instead of nothing.
+//! The whole page, every part a reader sees: its menus, header, sidebars and
+//! footer too. Guessing the "main content" lost what was asked for whenever
+//! a page put it elsewhere: a scoreboard's matches in its header ticker, a
+//! listing's items in a sidebar, a page of several `<article>` cards cut to
+//! its first. The model reads past a menu easily; it cannot read what was
+//! dropped. A page that is a script shell with little text gives the model
+//! its JSON-LD data instead of nothing.
 
 use scraper::{ElementRef, Html, Node, Selector};
 
-/// Never text a reader sees.
-const NEVER_TEXT: &[&str] = &["script", "style", "noscript", "template", "svg"];
-/// Chrome around an article: menus, site headers and footers, sidebars, forms.
-const CHROME: &[&str] = &["nav", "footer", "header", "aside", "form", "iframe"];
-/// Kept from a whole page: its menus and tickers may be the content, its
-/// footers and forms are not.
-const WHOLE_PAGE_SKIP: &[&str] = &["footer", "form", "iframe"];
-/// The main element must hold at least this share of the body's text to
-/// stand for the page.
-const MAIN_SHARE: f64 = 0.5;
+/// Never text a reader sees: code, styles, markup templates, and a
+/// drop-down's options (only the chosen one shows; a country picker would
+/// add two hundred lines).
+const NEVER_TEXT: &[&str] = &["script", "style", "noscript", "template", "svg", "select"];
 /// Below this much text a page is a script shell, worth its JSON-LD.
 const THIN_PAGE: usize = 300;
 /// JSON-LD text kept from a script shell, in characters.
@@ -62,15 +56,8 @@ pub fn html_to_text(html: &str, base: Option<&url::Url>) -> (Option<String>, Str
         .filter(|t| !t.is_empty());
     let select = |css: &str| Selector::parse(css).map(|s| document.select(&s).collect::<Vec<_>>()).unwrap_or_default();
     let body = select("body").into_iter().next().unwrap_or_else(|| document.root_element());
-    let articles = select("article");
-    let main = select("main").into_iter().next().or(if articles.len() == 1 { Some(articles[0]) } else { None });
-    let body_len = visible_len(body);
-    let (root, skip) = match main {
-        Some(main) if visible_len(main) as f64 >= MAIN_SHARE * body_len as f64 => (main, CHROME),
-        _ => (body, WHOLE_PAGE_SKIP),
-    };
     let mut out = String::new();
-    walk(root, base, skip, &mut out);
+    walk(body, base, &mut out);
     // A heading that held only an image is a bare "#": nothing to read.
     let mut lines: Vec<String> =
         out.lines().map(squash).filter(|l| !l.is_empty() && !l.chars().all(|c| c == '#')).collect();
@@ -82,18 +69,6 @@ pub fn html_to_text(html: &str, base: Option<&url::Url>) -> (Option<String>, Str
         }
     }
     (title, lines.join("\n"))
-}
-
-/// How many characters of text a reader sees in `element`.
-fn visible_len(element: ElementRef) -> usize {
-    element
-        .children()
-        .map(|child| match child.value() {
-            Node::Text(text) => text.split_whitespace().map(|w| w.chars().count() + 1).sum::<usize>(),
-            Node::Element(e) if !NEVER_TEXT.contains(&e.name()) => ElementRef::wrap(child).map_or(0, visible_len),
-            _ => 0,
-        })
-        .sum()
 }
 
 /// The text of a page's JSON-LD blocks, one `key: value` line per text or
@@ -159,14 +134,14 @@ fn link_target(href: &str, base: Option<&url::Url>) -> Option<String> {
     matches!(url.scheme(), "http" | "https").then(|| url.to_string())
 }
 
-/// `element`'s text into `out`, leaving out what never shows and the `skip` tags.
-fn walk(element: ElementRef, base: Option<&url::Url>, skip: &[&str], out: &mut String) {
+/// `element`'s text into `out`, leaving out what never shows.
+fn walk(element: ElementRef, base: Option<&url::Url>, out: &mut String) {
     for child in element.children() {
         match child.value() {
             Node::Text(text) => out.push_str(text),
             Node::Element(e) => {
                 let tag = e.name();
-                if NEVER_TEXT.contains(&tag) || skip.contains(&tag) {
+                if NEVER_TEXT.contains(&tag) {
                     continue;
                 }
                 let Some(child) = ElementRef::wrap(child) else { continue };
@@ -179,13 +154,13 @@ fn walk(element: ElementRef, base: Option<&url::Url>, skip: &[&str], out: &mut S
                         child.descendants().filter_map(|d| d.value().as_element()).any(|d| BLOCK.contains(&d.name()));
                     if wraps_blocks {
                         out.push('\n');
-                        walk(child, base, skip, out);
+                        walk(child, base, out);
                         out.truncate(out.trim_end().len());
                         out.push_str(&format!(" [open]({target})\n"));
                         continue;
                     }
                     let mut text = String::new();
-                    walk(child, base, skip, &mut text);
+                    walk(child, base, &mut text);
                     let text = squash(&text);
                     // An image link has no text to show; a link inside the
                     // text it names would only repeat it.
@@ -207,7 +182,7 @@ fn walk(element: ElementRef, base: Option<&url::Url>, skip: &[&str], out: &mut S
                 } else if tag == "li" {
                     out.push_str("- ");
                 }
-                walk(child, base, skip, out);
+                walk(child, base, out);
                 if block {
                     out.push('\n');
                 }
@@ -226,15 +201,16 @@ pub(crate) fn squash(text: &str) -> String {
 mod tests {
     use super::*;
 
+    /// The whole page, menus and footer too, as a reader sees it.
     #[test]
-    fn main_content_without_chrome() {
+    fn the_whole_page_with_its_menus_and_footer() {
         let html = "<html><head><title> Rust  Docs </title><style>x{}</style></head><body>\
             <nav>Home | About</nav><main><h1>Intro</h1><p>Rust is <b>fast</b>.</p>\
             <ul><li>safe</li><li>concurrent</li></ul><script>track()</script></main><footer>(c)</footer></body></html>";
         let (title, text) =
             html_to_text(&html.replace("<h1>Intro</h1>", "<h1><img src=\"logo.png\"></h1><h1>Intro</h1>"), None);
         assert_eq!(title.as_deref(), Some("Rust Docs"));
-        assert_eq!(text, "# Intro\nRust is fast.\n- safe\n- concurrent");
+        assert_eq!(text, "Home | About\n# Intro\nRust is fast.\n- safe\n- concurrent\n(c)");
         assert_eq!(fragment_text("a <strong>b</strong> &amp; c"), "a b & c");
     }
 
@@ -260,7 +236,7 @@ mod tests {
     /// A scores page whose matches sat in its header ticker and menus came
     /// back as its near-empty `<main>`: the ticker was dropped as chrome.
     #[test]
-    fn a_thin_main_gives_way_to_the_whole_page() {
+    fn a_ticker_in_the_header_is_kept() {
         let base = url::Url::parse("https://x.example/").unwrap();
         let html = "<body><header><a href=\"/m/1\">RDC vs ARA - ARA opt to bowl</a></header>\
             <nav><a href=\"/live\">Live Scores</a></nav><main><h1>Live</h1></main>\
@@ -268,8 +244,16 @@ mod tests {
         let (_, text) = html_to_text(html, Some(&base));
         assert_eq!(
             text,
-            "[RDC vs ARA - ARA opt to bowl](https://x.example/m/1) [Live Scores](https://x.example/live)\n# Live"
+            "[RDC vs ARA - ARA opt to bowl](https://x.example/m/1) [Live Scores](https://x.example/live)\n# Live\n(c) site"
         );
+    }
+
+    /// A drop-down shows one choice; its every option was two hundred lines
+    /// of countries on a sign-up form.
+    #[test]
+    fn a_drop_down_s_options_are_left_out() {
+        let html = "<body><p>Pick a team</p><select><option>India</option><option>Pakistan</option></select></body>";
+        assert_eq!(html_to_text(html, None).1, "Pick a team");
     }
 
     /// A page of several `<article>` cards was cut to its first card.

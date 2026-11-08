@@ -148,7 +148,7 @@ async fn fetch_reads_text_types_and_caps() {
     let fetcher = Fetcher::allowing_private_for_tests(Duration::from_secs(5));
     let page = fetcher.fetch(&format!("{site}/page")).await.unwrap();
     assert_eq!(page.title.as_deref(), Some("Ferris"));
-    assert_eq!(page.text, "## About\nFerris is the crab.");
+    assert_eq!(page.text, "menu\n## About\nFerris is the crab.", "the whole page, its menu too");
     assert!(!page.truncated);
 
     assert_eq!(fetcher.fetch(&format!("{site}/data.json")).await.unwrap().text, r#"{"a":1}"#);
