@@ -194,15 +194,23 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y cmake clang libclang-dev
       - name: Toolchain (from rust-toolchain.toml)
         run: rustup toolchain install && rustup show active-toolchain
-      # crates.io first: a published version can never be replaced, so the
-      # GitHub release (which can be redone) comes after it.
+      # A published crates.io version can never be replaced, so everything that
+      # can fail on GitHub's side is done first, as a draft (no tag yet, nothing
+      # public): v0.1.0 reached crates.io and then its GitHub release was
+      # refused (HTTP 403), leaving a version with no tag or binaries.
+      # RELEASE_TOKEN, when set, is a fine-grained token with contents write on
+      # this repository; the workflow's own token is the fallback.
+      - name: Draft the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$TAG" "$RUNNER_TEMP"/dist/* --repo "$GITHUB_REPOSITORY" --target "${{ needs.check.outputs.sha }}" \
+            --title "ratatoskr $TAG" --generate-notes --draft ${{ inputs.prerelease && '--prerelease' || '' }}
       - name: Publish to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: cargo publish --locked
       - name: Tag the tested commit and publish the release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create "$TAG" "$RUNNER_TEMP"/dist/* --repo "$GITHUB_REPOSITORY" --target "${{ needs.check.outputs.sha }}" \
-            --title "ratatoskr $TAG" --generate-notes ${{ inputs.prerelease && '--prerelease' || '' }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false

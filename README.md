@@ -499,12 +499,16 @@ The workflow runs in order, stopping at the first failure:
 - checks that the crate packages (`cargo publish --dry-run`);
 - runs the full CI on that commit, on every platform;
 - builds the binaries;
+- drafts the GitHub release with them and their SHA-256 checksums, so a
+  GitHub-side failure stops it before anything is published;
 - publishes `ratatoskr-web` to crates.io;
-- tags the commit `v<version>` and publishes a GitHub release with SHA-256
-  checksums.
+- tags the commit `v<version>` and publishes the drafted release.
 
-It needs one repository secret: `CARGO_REGISTRY_TOKEN`, a crates.io API token
-with the publish-new and publish-update scopes.
+It needs one repository secret, `CARGO_REGISTRY_TOKEN`: a crates.io API token
+with the publish-new and publish-update scopes. A second, `RELEASE_TOKEN`, is
+used for the GitHub release when set: a fine-grained token with Contents read
+and write on this repository only. Without it the workflow's own token is
+used.
 
 Search engines change their pages. When an engine stops parsing:
 1. capture a fresh results page into `tests/fixtures/`;
