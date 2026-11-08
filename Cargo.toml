@@ -1,0 +1,35 @@
+[package]
+name = "ratatoskr"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Polite web search and fetch for LLM tools: ddgs-style meta-search (Yahoo, DuckDuckGo, Yandex, Wikipedia, Grokipedia) and keyed APIs behind one interface, with rate limits, circuit breakers, caching and an SSRF-safe fetcher"
+readme = "README.md"
+keywords = ["search", "web-fetch", "llm", "scraping", "ddgs"]
+categories = ["web-programming::http-client", "text-processing"]
+publish = false
+
+[[bin]]
+name = "ratatoskr"
+path = "src/bin/ratatoskr.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip", "brotli", "cookies"] }
+scraper = "0.20"
+futures = "0.3"
+# web_fetch reads PDFs (Anthropic's web_fetch returns them); text for the model.
+pdf-extract = "0.9"
+url = "2"
+serde_json = { version = "1", features = ["preserve_order"] }
+tracing = "0.1"
+# web_fetch presents as Chrome down to the TLS handshake: some sites (ESPNcricinfo)
+# refuse any other fingerprint whatever the User-Agent. Only release candidates
+# exist, so the versions are pinned. BoringSSL underneath: building needs cmake and libclang.
+# Also the scraped engines' client (cookies, form, query).
+wreq = { version = "=6.0.0-rc.31", default-features = false, features = ["webpki-roots", "tokio-rt", "gzip", "brotli", "deflate", "zstd", "stream", "cookies", "form", "query"] }
+# emulation-compression: the browser's Accept-Encoding, not wreq's own.
+wreq-util = { version = "=3.0.0-rc.14", default-features = false, features = ["emulation", "emulation-compression"] }
+
+[dev-dependencies]
+axum = "0.8"
