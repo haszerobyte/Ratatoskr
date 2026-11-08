@@ -1,12 +1,15 @@
 name: Release
 
-# Started by hand (Actions → Release → Run workflow) with the version to
-# publish. It publishes only when everything before it passes:
-#   1. the version matches Cargo.toml, is on neither GitHub nor crates.io yet,
-#      and the crate packages (`cargo publish --dry-run`);
-#   2. CI passes: fmt, clippy, and the tests on every platform;
-#   3. the `ratatoskr` command-line tool builds for every platform below.
-# Then it publishes ratatoskr-web to crates.io, tags the tested commit
+# Started by hand (Actions → Release → Run workflow) on main, with the
+# version to publish. It publishes only when everything before it passes:
+#   1. the version is a semantic version, not below Cargo.toml's, and on
+#      neither GitHub nor crates.io yet;
+#   2. it is written into Cargo.toml and Cargo.lock and committed to main as
+#      haszerobyte ("Release <version>"; no commit when they already say it);
+#   3. that commit packages (`cargo publish --dry-run`) and passes CI: fmt,
+#      clippy, and the tests on every platform;
+#   4. the `ratatoskr` command-line tool builds for every platform below.
+# Then it publishes ratatoskr-web to crates.io, tags that commit
 # v<version>, and publishes a GitHub release with the binaries and their
 # SHA-256 checksums.
 #
@@ -16,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to publish, as in Cargo.toml (e.g. 0.1.0)"
+        description: "Version to publish (e.g. 0.1.1); written into Cargo.toml for you"
         required: true
       prerelease:
         description: "Mark the release as a pre-release"
@@ -32,47 +35,90 @@ env:
 
 jobs:
   check:
-    name: check the version
+    name: check and set the version
     runs-on: ubuntu-24.04
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - name: The version is Cargo.toml's and is not released yet
+      - name: The version is new and not below Cargo.toml's
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
+          [ "$GITHUB_REF" = refs/heads/main ] || { echo "::error::run the release on main"; exit 1; }
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::$VERSION is not a version like 0.1.1"; exit 1
+          fi
           declared=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-          if [ "$declared" != "${{ inputs.version }}" ]; then
-            echo "::error::Cargo.toml says $declared, not ${{ inputs.version }}: bump it first"; exit 1
+          lowest=$(printf '%s\n%s\n' "$declared" "$VERSION" | sort -V | head -1)
+          if [ "$lowest" != "$declared" ]; then
+            echo "::error::$VERSION is below Cargo.toml's $declared"; exit 1
           fi
           if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
             echo "::error::$TAG already exists"; exit 1
           fi
           crate=$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml | head -1)
           status=$(curl -s -o /dev/null -w "%{http_code}" -A "ratatoskr release check" \
-            "https://crates.io/api/v1/crates/$crate/${{ inputs.version }}")
+            "https://crates.io/api/v1/crates/$crate/$VERSION")
           if [ "$status" = 200 ]; then
-            echo "::error::$crate ${{ inputs.version }} is already on crates.io"; exit 1
+            echo "::error::$crate $VERSION is already on crates.io"; exit 1
           fi
       - name: The publishing token is set
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
           [ -n "$CARGO_REGISTRY_TOKEN" ] || { echo "::error::set the CARGO_REGISTRY_TOKEN repository secret"; exit 1; }
+      - name: Write the version into Cargo.toml and Cargo.lock
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          version = os.environ["VERSION"]
+          toml = open("Cargo.toml").read()
+          # The package's own version: the first version line, in [package].
+          toml = re.sub(r'^version = ".*"$', f'version = "{version}"', toml, count=1, flags=re.M)
+          crate = re.search(r'^name = "(.*)"$', toml, flags=re.M).group(1)
+          open("Cargo.toml", "w").write(toml)
+          lock = open("Cargo.lock").read()
+          # Its entry in Cargo.lock: the version line right after its name.
+          lock, n = re.subn(rf'(^name = "{re.escape(crate)}"\nversion = )".*"$', rf'\1"{version}"', lock, count=1, flags=re.M)
+          assert n == 1, f"no {crate} entry in Cargo.lock"
+          open("Cargo.lock", "w").write(lock)
+          PY
+          git diff --stat
       - name: Build tools (BoringSSL needs cmake and libclang)
         run: sudo apt-get update && sudo apt-get install -y cmake clang libclang-dev
       - name: Toolchain (from rust-toolchain.toml)
         run: rustup toolchain install && rustup show active-toolchain
       - name: The crate packages and builds as crates.io will
-        run: cargo publish --dry-run --locked
+        run: cargo publish --dry-run --locked --allow-dirty
+      - name: Commit the version to main
+        id: commit
+        run: |
+          if git diff --quiet; then
+            echo "Cargo.toml already says ${{ inputs.version }}: nothing to commit"
+          else
+            git config user.name haszerobyte
+            git config user.email thezeroday0x1@proton.me
+            git commit -am "Release ${{ inputs.version }}"
+            # Fails, and stops the release, if main moved since the run began.
+            git push origin HEAD:main
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   ci:
     name: CI
     needs: check
     uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.check.outputs.sha }}
 
   build:
     name: build (${{ matrix.target }})
-    needs: ci
+    needs: [check, ci]
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.experimental }}
     strategy:
@@ -88,6 +134,8 @@ jobs:
           - { target: x86_64-pc-windows-msvc, os: windows-2025, archive: zip, experimental: true }
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.check.outputs.sha }}
       - name: Build tools (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y cmake clang libclang-dev
@@ -125,10 +173,12 @@ jobs:
 
   publish:
     name: publish to crates.io and GitHub
-    needs: build
+    needs: [check, build]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.check.outputs.sha }}
       - uses: actions/download-artifact@v8
         with:
           path: ${{ runner.temp }}/dist
@@ -154,5 +204,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$TAG" "$RUNNER_TEMP"/dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+          gh release create "$TAG" "$RUNNER_TEMP"/dist/* --repo "$GITHUB_REPOSITORY" --target "${{ needs.check.outputs.sha }}" \
             --title "ratatoskr $TAG" --generate-notes ${{ inputs.prerelease && '--prerelease' || '' }}

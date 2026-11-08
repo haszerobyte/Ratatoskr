@@ -488,18 +488,20 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
-To publish a release:
-1. bump `version` in `Cargo.toml` and merge it;
-2. run **Actions → Release → Run workflow** with that version.
+To publish a release, run **Actions → Release → Run workflow** on `main` with
+the new version (e.g. `0.1.1`). There's no need to edit `Cargo.toml` first.
 
-The workflow then runs in order, stopping at the first failure:
-- checks that the version matches `Cargo.toml` and is on neither GitHub nor
-  crates.io yet, and that the crate packages (`cargo publish --dry-run`);
-- runs the full CI on every platform;
+The workflow runs in order, stopping at the first failure:
+- checks that the version is a semantic version, isn't below `Cargo.toml`'s,
+  and isn't released on GitHub or crates.io yet;
+- writes it into `Cargo.toml` and `Cargo.lock`, and commits that to `main` as
+  "Release <version>";
+- checks that the crate packages (`cargo publish --dry-run`);
+- runs the full CI on that commit, on every platform;
 - builds the binaries;
 - publishes `ratatoskr-web` to crates.io;
-- tags the tested commit `v<version>` and publishes a GitHub release with
-  SHA-256 checksums.
+- tags the commit `v<version>` and publishes a GitHub release with SHA-256
+  checksums.
 
 It needs one repository secret: `CARGO_REGISTRY_TOKEN`, a crates.io API token
 with the publish-new and publish-update scopes.
