@@ -58,16 +58,29 @@ pub fn html_to_text(html: &str, base: Option<&url::Url>) -> (Option<String>, Str
     let mut out = String::new();
     walk(body, base, &mut out);
     let mut lines: Vec<(bool, String)> = Vec::new();
+    // A list item whose content is a block (`<li><div><a>Home</a></div></li>`,
+    // most site menus) leaves its "-" on a line of its own: it joins the
+    // item's first line instead.
+    let mut bullet = false;
     for line in out.lines() {
         if let Some(code) = line.strip_prefix(VERBATIM) {
+            bullet = false;
             lines.push((true, code.trim_end().to_string()));
             continue;
         }
-        let line = squash(line);
-        // A heading that held only an image is a bare "#": nothing to read.
-        if !line.is_empty() && !line.chars().all(|c| c == '#') {
-            lines.push((false, line));
+        let mut line = squash(line);
+        if line == "-" {
+            bullet = true;
+            continue;
         }
+        // A heading that held only an image is a bare "#": nothing to read.
+        if line.is_empty() || line.chars().all(|c| c == '#') {
+            continue;
+        }
+        if std::mem::take(&mut bullet) && !line.starts_with("- ") {
+            line = format!("- {line}");
+        }
+        lines.push((false, line));
     }
     let mut lines: Vec<String> = drop_repeated_menus(lines);
     if lines.iter().map(|l| l.chars().count()).sum::<usize>() < THIN_PAGE {
@@ -487,5 +500,20 @@ mod tests {
         let (title, article) = html_to_text(include_str!("../tests/fixtures/pages/encyclopedia_article.html"), None);
         assert!(title.is_some_and(|t| t.contains("Ratatoskr")));
         assert!(article.contains("Ratatoskr runs up and down Yggdrasil"));
+    }
+
+    /// Regression: a menu item holding a block came out as a lone "-" line
+    /// and the item on the next, sixty-six of them on a news front page,
+    /// and the lone lines kept a repeated menu from being recognised.
+    #[test]
+    fn a_list_item_holding_a_block_keeps_its_bullet() {
+        let base = url::Url::parse("https://x.example/").unwrap();
+        let menu = "<ul><li><div><a href=\"/a\">A</a></div></li><li><div><a href=\"/b\">B</a></div></li>\
+            <li><div><a href=\"/c\">C</a></div></li></ul>";
+        let html = format!("<body>{menu}<p>Story</p>{menu}</body>");
+        assert_eq!(
+            html_to_text(&html, Some(&base)).1,
+            "- [A](https://x.example/a)\n- [B](https://x.example/b)\n- [C](https://x.example/c)\nStory"
+        );
     }
 }
