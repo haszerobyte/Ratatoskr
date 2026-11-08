@@ -13,8 +13,11 @@ permissions:
 
 concurrency:
   # Keyed by the workflow too: run inside a release, it is never cancelled by a push.
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # A pull request's newer push supersedes its older run. On main every commit
+  # is checked to the end (its own group, by commit): a release is cut from
+  # main, so each commit there must have a result, not a cancellation.
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
