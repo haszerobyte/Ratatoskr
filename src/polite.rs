@@ -78,28 +78,30 @@ impl CircuitBreaker {
 }
 
 /// One cached answer: when, from which engine, what.
-type Entry = (Instant, &'static str, Vec<Hit>);
+type Entry<T> = (Instant, &'static str, T);
+/// The entries by key, and their keys oldest first.
+type Entries<T> = (HashMap<String, Entry<T>>, VecDeque<String>);
 
 /// Search results by normalized query, expiring after `ttl`, oldest evicted
 /// beyond `capacity`.
-pub struct Cache {
+pub struct Cache<T = Vec<Hit>> {
     ttl: Duration,
     capacity: usize,
-    entries: Mutex<(HashMap<String, Entry>, VecDeque<String>)>,
+    entries: Mutex<Entries<T>>,
 }
 
-impl Cache {
+impl<T: Clone> Cache<T> {
     pub fn new(ttl: Duration, capacity: usize) -> Self {
         Self { ttl, capacity: capacity.max(1), entries: Mutex::new((HashMap::new(), VecDeque::new())) }
     }
 
-    pub fn get(&self, key: &str) -> Option<(&'static str, Vec<Hit>)> {
+    pub fn get(&self, key: &str) -> Option<(&'static str, T)> {
         let entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
         let (stored, engine, hits) = entries.0.get(key)?;
         (stored.elapsed() < self.ttl).then(|| (*engine, hits.clone()))
     }
 
-    pub fn put(&self, key: String, engine: &'static str, hits: Vec<Hit>) {
+    pub fn put(&self, key: String, engine: &'static str, hits: T) {
         let mut entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
         let (map, order) = &mut *entries;
         if map.insert(key.clone(), (Instant::now(), engine, hits)).is_none() {

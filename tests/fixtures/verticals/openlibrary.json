@@ -1,0 +1,116 @@
+{
+ "numFound": 766,
+ "docs": [
+  {
+   "author_key": [
+    "OL3089677A",
+    "OL3303413A",
+    "OL8224579A"
+   ],
+   "author_name": [
+    "Sean McManus",
+    "Mike Cook",
+    "Gerhard Franken"
+   ],
+   "cover_edition_key": "OL28257367M",
+   "cover_i": 10186202,
+   "ebook_access": "printdisabled",
+   "edition_count": 17,
+   "first_publish_year": 2013,
+   "has_fulltext": true,
+   "ia": [
+    "raspberrypifordu0000mcma"
+   ],
+   "ia_collection": [
+    "binghamton-ol",
+    "hamiltonpubliclibrary-ol",
+    "internetarchivebooks",
+    "printdisabled"
+   ],
+   "key": "/works/OL20867924W",
+   "language": [
+    "eng",
+    "ger"
+   ],
+   "public_scan_b": false,
+   "title": "Raspberry Pi For Dummies"
+  },
+  {
+   "author_key": [
+    "OL7318005A"
+   ],
+   "author_name": [
+    "Eben Upton"
+   ],
+   "cover_i": 7605940,
+   "ebook_access": "printdisabled",
+   "edition_count": 16,
+   "first_publish_year": 2012,
+   "has_fulltext": true,
+   "ia": [
+    "raspberrypiuserg0000upto_i5z7"
+   ],
+   "ia_collection": [
+    "internetarchivebooks",
+    "printdisabled"
+   ],
+   "key": "/works/OL17451852W",
+   "language": [
+    "eng"
+   ],
+   "public_scan_b": false,
+   "title": "Raspberry Pi User Guide"
+  },
+  {
+   "author_key": [
+    "OL7902881A"
+   ],
+   "author_name": [
+    "Craig Newport"
+   ],
+   "cover_edition_key": "OL28083577M",
+   "cover_i": 13210302,
+   "ebook_access": "no_ebook",
+   "edition_count": 4,
+   "first_publish_year": 2017,
+   "has_fulltext": false,
+   "key": "/works/OL20754618W",
+   "language": [
+    "eng"
+   ],
+   "public_scan_b": false,
+   "title": "Raspberry Pi"
+  },
+  {
+   "author_key": [
+    "OL6935032A"
+   ],
+   "author_name": [
+    "Simon Monk"
+   ],
+   "cover_i": 7848785,
+   "ebook_access": "borrowable",
+   "edition_count": 3,
+   "first_publish_year": 2012,
+   "has_fulltext": true,
+   "ia": [
+    "programmingraspb00monk"
+   ],
+   "ia_collection": [
+    "americana",
+    "inlibrary",
+    "internetarchivebooks",
+    "printdisabled"
+   ],
+   "key": "/works/OL17573905W",
+   "language": [
+    "fre",
+    "eng"
+   ],
+   "lending_edition_s": "OL26177049M",
+   "lending_identifier_s": "programmingraspb00monk",
+   "public_scan_b": false,
+   "title": "Programming the Raspberry Pi"
+  }
+ ]
+}

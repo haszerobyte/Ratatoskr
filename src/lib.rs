@@ -24,6 +24,7 @@ pub mod mcp;
 pub mod polite;
 pub mod request;
 pub mod text;
+pub mod vertical;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -131,10 +132,92 @@ impl Sources {
     }
 }
 
+/// The results of a news, images, videos or books search.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Found<T> {
+    pub results: Vec<T>,
+    /// The sources that answered.
+    pub sources: Vec<&'static str>,
+    pub from_cache: bool,
+}
+
+/// One cache and one pool of sources for a kind of result.
+struct Kind<T> {
+    pool: vertical::Pool<T>,
+    cache: Cache<(Vec<T>, Vec<&'static str>)>,
+}
+
+impl<T: vertical::Keyed + Clone + Send + 'static> Kind<T> {
+    fn new(sources: Vec<Arc<dyn vertical::Source<T>>>, settings: &Settings) -> Self {
+        Self {
+            pool: vertical::Pool::new(sources, settings.cooldown, settings.min_interval),
+            cache: Cache::new(settings.cache_ttl, settings.cache_entries),
+        }
+    }
+
+    async fn search(&self, label: &'static str, request: &SearchRequest) -> Result<Found<T>, SearchFailure> {
+        let key = request.cache_key(label);
+        if let Some((_, (results, sources))) = self.cache.get(&key) {
+            return Ok(Found { results, sources, from_cache: true });
+        }
+        match self.pool.search(request).await {
+            Ok((results, sources)) if !results.is_empty() => {
+                self.cache.put(key, label, (results.clone(), sources.clone()));
+                Ok(Found { results, sources, from_cache: false })
+            }
+            Ok(_) => Err(SearchFailure { attempts: vec![(label, "no results".into())] }),
+            Err(error) => Err(SearchFailure { attempts: vec![(label, error.to_string())] }),
+        }
+    }
+}
+
+/// The sources of the news, images, videos and books searches.
+pub struct Verticals {
+    pub news: Vec<Arc<dyn vertical::Source<vertical::NewsResult>>>,
+    pub images: Vec<Arc<dyn vertical::Source<vertical::ImageResult>>>,
+    pub videos: Vec<Arc<dyn vertical::Source<vertical::VideoResult>>>,
+    pub books: Vec<Arc<dyn vertical::Source<vertical::BookResult>>>,
+}
+
+impl Verticals {
+    /// None: [`Ratatoskr::new`]'s default, for a web-search-only instance.
+    pub fn none() -> Self {
+        Self { news: Vec::new(), images: Vec::new(), videos: Vec::new(), books: Vec::new() }
+    }
+
+    /// The production sources:
+    /// - news: DuckDuckGo and Bing (Bing's index, so one of them a search) and
+    ///   Yahoo (its own);
+    /// - images: Bing, and DuckDuckGo when it does not ask its proof of work;
+    /// - videos: DuckDuckGo;
+    /// - books: Open Library's official API.
+    pub fn standard(settings: &Settings) -> Self {
+        use vertical::{bing, duckduckgo, openlibrary, yahoo};
+        let t = settings.timeout;
+        Self {
+            news: vec![
+                Arc::new(duckduckgo::News(duckduckgo::DuckDuckGo::new(t))),
+                Arc::new(bing::News(bing::Bing::new(t))),
+                Arc::new(yahoo::News(yahoo::Yahoo::new(t))),
+            ],
+            images: vec![
+                Arc::new(bing::Images(bing::Bing::new(t))),
+                Arc::new(duckduckgo::Images(duckduckgo::DuckDuckGo::new(t))),
+            ],
+            videos: vec![Arc::new(duckduckgo::Videos(duckduckgo::DuckDuckGo::new(t)))],
+            books: vec![Arc::new(openlibrary::OpenLibrary::new(engine::http_client(t)))],
+        }
+    }
+}
+
 pub struct Ratatoskr {
     slots: Vec<Slot>,
     cache: Cache,
     fetcher: fetch::Fetcher,
+    news: Kind<vertical::NewsResult>,
+    images: Kind<vertical::ImageResult>,
+    videos: Kind<vertical::VideoResult>,
+    books: Kind<vertical::BookResult>,
 }
 
 impl Ratatoskr {
@@ -148,11 +231,45 @@ impl Ratatoskr {
                 breaker: CircuitBreaker::new(settings.cooldown),
             })
             .collect();
+        let none = Verticals::none();
         Self {
             slots,
             cache: Cache::new(settings.cache_ttl, settings.cache_entries),
             fetcher: fetch::Fetcher::new(settings.timeout),
+            news: Kind::new(none.news, &settings),
+            images: Kind::new(none.images, &settings),
+            videos: Kind::new(none.videos, &settings),
+            books: Kind::new(none.books, &settings),
         }
+    }
+
+    /// With these news, images, videos and books sources.
+    pub fn with_verticals(mut self, verticals: Verticals, settings: &Settings) -> Self {
+        self.news = Kind::new(verticals.news, settings);
+        self.images = Kind::new(verticals.images, settings);
+        self.videos = Kind::new(verticals.videos, settings);
+        self.books = Kind::new(verticals.books, settings);
+        self
+    }
+
+    /// News articles, with dates as ISO 8601 where the source gives one.
+    pub async fn news(&self, request: &SearchRequest) -> Result<Found<vertical::NewsResult>, SearchFailure> {
+        self.news.search("news", request).await
+    }
+
+    /// Images, with their page, thumbnail and size where known.
+    pub async fn images(&self, request: &SearchRequest) -> Result<Found<vertical::ImageResult>, SearchFailure> {
+        self.images.search("images", request).await
+    }
+
+    /// Videos, with duration, publisher and views where known.
+    pub async fn videos(&self, request: &SearchRequest) -> Result<Found<vertical::VideoResult>, SearchFailure> {
+        self.videos.search("videos", request).await
+    }
+
+    /// Books, with authors, year and cover where known.
+    pub async fn books(&self, request: &SearchRequest) -> Result<Found<vertical::BookResult>, SearchFailure> {
+        self.books.search("books", request).await
     }
 
     /// With a given fetcher (tests use [`fetch::Fetcher::allowing_private_for_tests`]).
@@ -194,7 +311,7 @@ impl Ratatoskr {
             engines.push(Arc::new(engine::google::Google::new(http.clone(), key.trim(), cx.trim())));
         }
         engines.push(Arc::new(engine::wikipedia::Wikipedia::new(http, "en")));
-        Self::new(engines, settings)
+        Self::new(engines, settings.clone()).with_verticals(Verticals::standard(&settings), &settings)
     }
 
     /// Search: the cache first, then each engine in order that is not cooling
@@ -258,6 +375,17 @@ impl Ratatoskr {
     /// Per-engine health, for logs and /stats.
     pub fn status(&self) -> Vec<(&'static str, Option<Duration>)> {
         self.slots.iter().map(|s| (s.engine.name(), s.breaker.open_for())).collect()
+    }
+
+    /// Each news, images, videos and books source, by kind, with how long it
+    /// is still resting, if it is.
+    pub fn vertical_status(&self) -> Vec<(&'static str, &'static str, Option<Duration>)> {
+        let tag = |kind, list: Vec<(&'static str, Option<Duration>)>| list.into_iter().map(move |(n, r)| (kind, n, r));
+        tag("news", self.news.pool.status())
+            .chain(tag("images", self.images.pool.status()))
+            .chain(tag("videos", self.videos.pool.status()))
+            .chain(tag("books", self.books.pool.status()))
+            .collect()
     }
 }
 

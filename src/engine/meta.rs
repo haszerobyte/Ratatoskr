@@ -67,7 +67,7 @@ impl Meta {
 }
 
 /// The URL as a de-duplication key: scheme-less, no trailing slash, lower-case host.
-fn url_key(url: &str) -> String {
+pub(crate) fn url_key(url: &str) -> String {
     match url::Url::parse(url) {
         Ok(parsed) => format!(
             "{}{}{}",
@@ -130,12 +130,12 @@ pub fn rank(hits: Vec<Hit>, query: &str) -> Vec<Hit> {
 }
 
 /// How many web engines to ask at once for `limit` results.
-fn workers(limit: usize, providers: usize) -> usize {
+pub(crate) fn workers(limit: usize, providers: usize) -> usize {
     (limit.div_ceil(10) + 1).min(providers).max(1)
 }
 
 /// `items` in a random order (Fisher-Yates).
-fn shuffled<T>(mut items: Vec<T>) -> Vec<T> {
+pub(crate) fn shuffled<T>(mut items: Vec<T>) -> Vec<T> {
     for i in (1..items.len()).rev() {
         items.swap(i, (browser::random_u64() % (i as u64 + 1)) as usize);
     }

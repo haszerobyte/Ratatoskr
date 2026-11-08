@@ -1,0 +1,67 @@
+{
+ "results": [
+  {
+   "date": 1794092400,
+   "excerpt": "The 16GB <b>Raspberry</b> <b>Pi</b> 5 now costs $385, up from $120 at launch, and <b>Raspberry</b> <b>Pi</b> says scarce 16GB DRAM leaves it no choice.",
+   "fetch_image": 1,
+   "image": "https://s.yimg.com/lo/mysterio/api/e2638708d65ae8bd6fbd04969923d8e48e0e5d7f1e3d98dcfcfd11d9aef55da8/lightyear_networkapi/resizefill_w960%3Bquality_80%3Bformat_webp/https%3A%2F%2Fmedia.zenfs.com%2Fen%2Ftechradar_949%2Fb624794ecdcee69569d8a28869af2ef0.png",
+   "image_token": "TOKEN",
+   "relative_time": "20 hours ago",
+   "source": "YAHOO!",
+   "syndicate": "bing",
+   "title": "Raspberry Pi 5 price hike means the 16GB model now costs three times what it did at launch — and of course, the global RAM shortage is to blame",
+   "url": "https://tech.yahoo.com/computing/articles/raspberry-pi-5-price-hike-230000118.html",
+   "use_relevancy": 0
+  },
+  {
+   "date": 1794083420,
+   "excerpt": "It gifted seamlessness to beginner hobbyists",
+   "fetch_image": 1,
+   "image": "https://img-s-msn-com.akamaized.net/tenant/amp/entityid/AA2gZg1S.img?w=2160&h=1215&m=4&q=79",
+   "image_token": "TOKEN",
+   "relative_time": "22 hours ago",
+   "source": "XDA Developers",
+   "syndicate": "bing",
+   "title": "The Raspberry Pi 400 is the most underrated Raspberry Pi ever made",
+   "url": "https://www.msn.com/en-us/technology/hardware-and-devices/the-raspberry-pi-400-is-the-most-underrated-raspberry-pi-ever-made/ar-AA2gZK4M",
+   "use_relevancy": 0
+  },
+  {
+   "date": 1794146460,
+   "excerpt": "Show me the facts Explain it like I&#x27;m 5 Give me a lighthearted recap I have spent an unhealthy amount of time browsing and monitoring the 8GB <b>Pi</b> 5 listings and SSD-supporting cases. My <b>Pi</b> 4 (8GB) felt slow,",
+   "image": "https://static0.xdaimages.com/wordpress/wp-content/uploads/wm/2026/11/raspberry-pi-os-desktop.jpg?w=1600&h=900&fit=crop",
+   "image_token": "TOKEN",
+   "relative_time": "5 hours ago",
+   "source": "XDA Developers",
+   "syndicate": "bing",
+   "title": "Replacing Raspberry Pi OS with this lightweight distro made my SBC faster than any hardware upgrade",
+   "url": "https://www.xda-developers.com/replacing-raspberry-pi-os-with-distro-made-sbc-faster-hardware-upgrade/",
+   "use_relevancy": 0
+  },
+  {
+   "date": 1794092400,
+   "excerpt": "The 16GB <b>Raspberry</b> <b>Pi</b> 5 now costs $385, up from $120 at launch, and <b>Raspberry</b> <b>Pi</b> says scarce 16GB DRAM leaves it no choice.",
+   "fetch_image": 1,
+   "image": "https://img-s-msn-com.akamaized.net/tenant/amp/entityid/AA2gYKxl.img?w=1536&h=864&m=4&q=79",
+   "image_token": "TOKEN",
+   "relative_time": "20 hours ago",
+   "source": "TechRadar",
+   "syndicate": "bing",
+   "title": "Raspberry Pi 5 price hike shock users — and of course, the global RAM shortage is to blame",
+   "url": "https://www.msn.com/en-gb/technology/hardware-and-devices/raspberry-pi-5-price-hike-shock-users-and-of-course-the-global-ram-shortage-is-to-blame/ar-AA2gYxjA",
+   "use_relevancy": 0
+  },
+  {
+   "date": 1793970120,
+   "excerpt": "Earlier this week, <b>Raspberry</b> <b>Pi</b> co-founder and CEO Eben Upton announced another price hike, this time affecting the 16GB variant of the <b>Raspberry</b> <b>Pi</b> 5. The",
+   "image": "https://www.techspot.com/images2/news/bigimage/2026/11/2026-11-06-image-14.jpg",
+   "image_token": "TOKEN",
+   "relative_time": "2 days ago",
+   "source": "TechSpot",
+   "syndicate": "bing",
+   "title": "The Raspberry Pi 5 16GB now costs $385, more than triple its launch price",
+   "url": "https://www.techspot.com/news/114465-raspberry-pi-5-16gb-now-costs-385-more.html",
+   "use_relevancy": 0
+  }
+ ]
+}
