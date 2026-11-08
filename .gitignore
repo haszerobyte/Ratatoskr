@@ -4,3 +4,7 @@
 # machine. Never committed.
 AGENTS.md
 CLAUDE.md
+
+# Credentials (crates.io token and the like): local only.
+.env
+.env.*
