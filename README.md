@@ -415,13 +415,17 @@ Some engines aren't used:
 - **Which part of the page:**
   - all of it that a reader sees, menus, header, sidebars and footer
     included: no guess at the "main content", which on a scoreboard, a
-    listing or a search page drops the items it holds; scripts, styles and
-    a drop-down's unchosen options are left out;
+    listing or a search page drops the items it holds; scripts, styles,
+    a drop-down's unchosen options and anything hidden (`hidden`,
+    `aria-hidden`, inline `display: none`) are left out;
+  - a menu the page repeats (header and footer, desktop and mobile) is read
+    once;
   - a page rendered by script, with almost no text, adds the text fields of
     its JSON-LD data.
 - **Formats:**
-  - HTML becomes text with headings, lists, ` | `-separated table cells and
-    `[text](absolute url)` links;
+  - HTML becomes text with headings, lists, ` | `-separated table cells,
+    `[text](absolute url)` links, code blocks fenced and kept as written,
+    inline code in backticks, and images as `[image: alt text]`;
   - JSON, XML and plain text pass through;
   - a PDF's text is extracted, and its bytes are returned in `page.pdf`.
 - **Size caps:** 2 MB of body, 32 MB for a PDF, and 100,000 characters of

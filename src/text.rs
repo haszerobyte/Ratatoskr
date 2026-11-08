@@ -58,9 +58,19 @@ pub fn html_to_text(html: &str, base: Option<&url::Url>) -> (Option<String>, Str
     let body = select("body").into_iter().next().unwrap_or_else(|| document.root_element());
     let mut out = String::new();
     walk(body, base, &mut out);
-    // A heading that held only an image is a bare "#": nothing to read.
-    let mut lines: Vec<String> =
-        out.lines().map(squash).filter(|l| !l.is_empty() && !l.chars().all(|c| c == '#')).collect();
+    let mut lines: Vec<(bool, String)> = Vec::new();
+    for line in out.lines() {
+        if let Some(code) = line.strip_prefix(VERBATIM) {
+            lines.push((true, code.trim_end().to_string()));
+            continue;
+        }
+        let line = squash(line);
+        // A heading that held only an image is a bare "#": nothing to read.
+        if !line.is_empty() && !line.chars().all(|c| c == '#') {
+            lines.push((false, line));
+        }
+    }
+    let mut lines: Vec<String> = drop_repeated_menus(lines);
     if lines.iter().map(|l| l.chars().count()).sum::<usize>() < THIN_PAGE {
         let structured = structured_data(&select("script[type=\"application/ld+json\"]"));
         if !structured.is_empty() {
@@ -134,6 +144,67 @@ fn link_target(href: &str, base: Option<&url::Url>) -> Option<String> {
     matches!(url.scheme(), "http" | "https").then(|| url.to_string())
 }
 
+/// Marks a line of a code block, kept as written: its spacing is its meaning.
+const VERBATIM: char = '\u{E000}';
+
+/// Hidden from a reader: the `hidden` attribute, `aria-hidden="true"`, or an
+/// inline `display: none` / `visibility: hidden`. A whole page carries a
+/// lot of it (a collapsed mobile menu repeating the desktop one, closed
+/// dialogs, cookie notices), and none of it is what a reader sees.
+fn is_hidden(element: &scraper::node::Element) -> bool {
+    if element.attr("hidden").is_some() || element.attr("aria-hidden").is_some_and(|v| v.trim() == "true") {
+        return true;
+    }
+    element.attr("style").is_some_and(|style| {
+        let style = style.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_lowercase();
+        style.contains("display:none") || style.contains("visibility:hidden")
+    })
+}
+
+/// A code block's language, from a `language-…` or `lang-…` class on it or
+/// on its `<code>`.
+fn code_language(pre: ElementRef) -> String {
+    std::iter::once(pre)
+        .chain(pre.children().filter_map(ElementRef::wrap))
+        .filter_map(|e| e.value().attr("class"))
+        .flat_map(str::split_whitespace)
+        .find_map(|class| class.strip_prefix("language-").or_else(|| class.strip_prefix("lang-")))
+        .unwrap_or("")
+        .to_string()
+}
+
+/// Lines of links seen before, dropped when they come again as a menu: a run
+/// of three or more such lines, or lines of three or more links each. Sites
+/// repeat their navigation (header and footer, desktop and mobile); a page's
+/// own content seldom repeats a line of links. Code lines are never dropped.
+fn drop_repeated_menus(lines: Vec<(bool, String)>) -> Vec<String> {
+    let links = |line: &str| line.matches("](http").count();
+    let is_menu_line = |(code, line): &(bool, String)| !code && links(line) > 0;
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut kept = Vec::with_capacity(lines.len());
+    let mut i = 0;
+    while i < lines.len() {
+        if is_menu_line(&lines[i]) && seen.contains(&lines[i].1) {
+            let mut end = i;
+            while end < lines.len() && is_menu_line(&lines[end]) && seen.contains(&lines[end].1) {
+                end += 1;
+            }
+            let run = &lines[i..end];
+            if run.len() < 3 && !run.iter().all(|(_, line)| links(line) >= 3) {
+                kept.extend(run.iter().map(|(_, line)| line.clone()));
+            }
+            i = end;
+            continue;
+        }
+        if is_menu_line(&lines[i]) {
+            seen.insert(lines[i].1.clone());
+        }
+        kept.push(lines[i].1.clone());
+        i += 1;
+    }
+    kept
+}
+
 /// `element`'s text into `out`, leaving out what never shows.
 fn walk(element: ElementRef, base: Option<&url::Url>, out: &mut String) {
     for child in element.children() {
@@ -141,10 +212,38 @@ fn walk(element: ElementRef, base: Option<&url::Url>, out: &mut String) {
             Node::Text(text) => out.push_str(text),
             Node::Element(e) => {
                 let tag = e.name();
-                if NEVER_TEXT.contains(&tag) {
+                if NEVER_TEXT.contains(&tag) || is_hidden(e) {
                     continue;
                 }
                 let Some(child) = ElementRef::wrap(child) else { continue };
+                if tag == "pre" {
+                    let code = child.text().collect::<String>();
+                    let code = code.trim_matches('\n');
+                    if !code.trim().is_empty() {
+                        out.push_str(&format!("\n{VERBATIM}```{}\n", code_language(child)));
+                        for line in code.lines() {
+                            out.push_str(&format!("{VERBATIM}{line}\n"));
+                        }
+                        out.push_str(&format!("{VERBATIM}```\n"));
+                    }
+                    continue;
+                }
+                if tag == "code" {
+                    let code = squash(&child.text().collect::<String>());
+                    if !code.is_empty() {
+                        out.push_str(&format!(" `{code}` "));
+                    }
+                    continue;
+                }
+                if tag == "img" {
+                    // What the image shows, when the page says: a team's
+                    // logo, a chart, a product. An image with no alt text
+                    // is decoration or a tracker.
+                    if let Some(alt) = e.attr("alt").map(squash).filter(|alt| !alt.is_empty()) {
+                        out.push_str(&format!(" [image: {alt}] "));
+                    }
+                    continue;
+                }
                 if tag == "a"
                     && let Some(target) = e.attr("href").and_then(|href| link_target(href, base))
                 {
@@ -254,6 +353,52 @@ mod tests {
     fn a_drop_down_s_options_are_left_out() {
         let html = "<body><p>Pick a team</p><select><option>India</option><option>Pakistan</option></select></body>";
         assert_eq!(html_to_text(html, None).1, "Pick a team");
+    }
+
+    /// Code came back with its indentation squashed out, line by line.
+    #[test]
+    fn code_blocks_keep_their_spacing_and_inline_code_its_backticks() {
+        let html = "<body><p>Use it:</p><pre><code class=\"language-rust\">fn main() {\n    println!(\"hi\");\n}\
+            </code></pre><p>Inline <code>x  + 1</code> works.</p></body>";
+        assert_eq!(
+            html_to_text(html, None).1,
+            "Use it:\n```rust\nfn main() {\n    println!(\"hi\");\n}\n```\nInline `x + 1` works."
+        );
+    }
+
+    /// Reading whole pages brought in what no reader sees: hidden menus,
+    /// closed dialogs, cookie notices.
+    #[test]
+    fn hidden_parts_are_left_out() {
+        let html = "<body><nav hidden>Mobile menu</nav><div aria-hidden=\"true\">Icon</div>\
+            <div style=\"display: none\">Cookie notice</div><div style=\"Visibility : hidden\">Ghost</div>\
+            <p>Shown</p></body>";
+        assert_eq!(html_to_text(html, None).1, "Shown");
+    }
+
+    /// Images were dropped whole, and a team's logo or a chart said something.
+    #[test]
+    fn images_give_their_alt_text() {
+        let base = url::Url::parse("https://x.example/").unwrap();
+        let html = "<body><p><img src=\"in.png\" alt=\"India\"> 208 all out</p>\
+            <a href=\"/t\"><img alt=\"Team page\"></a><img src=\"px.gif\" alt=\"\"></body>";
+        assert_eq!(
+            html_to_text(html, Some(&base)).1,
+            "[image: India] 208 all out\n[image: Team page](https://x.example/t)"
+        );
+    }
+
+    /// The header's menu came again in the footer: read once is enough.
+    #[test]
+    fn a_repeated_menu_is_read_once() {
+        let base = url::Url::parse("https://x.example/").unwrap();
+        let menu = "<ul><li><a href=\"/a\">A</a></li><li><a href=\"/b\">B</a></li><li><a href=\"/c\">C</a></li></ul>";
+        let html = format!("<body>{menu}<p>Story</p>{menu}<p><a href=\"/a\">A</a> again</p></body>");
+        assert_eq!(
+            html_to_text(&html, Some(&base)).1,
+            "- [A](https://x.example/a)\n- [B](https://x.example/b)\n- [C](https://x.example/c)\nStory\n\
+            [A](https://x.example/a) again"
+        );
     }
 
     /// A page of several `<article>` cards was cut to its first card.
