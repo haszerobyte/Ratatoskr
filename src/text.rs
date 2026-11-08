@@ -107,8 +107,13 @@ fn structured_data(scripts: &[ElementRef]) -> Vec<String> {
         match value {
             serde_json::Value::Object(map) => {
                 for (k, v) in map {
-                    if !k.starts_with('@') {
-                        collect(v, k, lines, budget);
+                    match k.as_str() {
+                        "@context" | "@type" | "@id" => {}
+                        // A container (`@graph`, the usual wrapper for a
+                        // page's several entities) or a value (`@value`):
+                        // its contents, under the enclosing field's name.
+                        k if k.starts_with('@') => collect(v, key, lines, budget),
+                        _ => collect(v, k, lines, budget),
                     }
                 }
             }
@@ -287,6 +292,21 @@ mod tests {
             html_to_text(html, None).1,
             "Structured data on the page:\nname: WI vs BAN, 2nd Test\nstartDate: 2026-11-05\n\
             name: West Indies\nname: Bangladesh"
+        );
+    }
+
+    /// Regression: every `@` key was skipped, `@graph` with it, and that is
+    /// where most pages put their entities: they came back with nothing.
+    #[test]
+    fn structured_data_inside_a_graph_is_read() {
+        let html = "<html><head><script type=\"application/ld+json\">\
+            {\"@context\":\"https://schema.org\",\"@graph\":[\
+            {\"@type\":\"WebSite\",\"@id\":\"https://x.example/#site\",\"name\":\"X News\"},\
+            {\"@type\":\"NewsArticle\",\"headline\":\"Pakistan U19 beat India\"}]}\
+            </script></head><body><div id=\"app\"></div></body></html>";
+        assert_eq!(
+            html_to_text(html, None).1,
+            "Structured data on the page:\nname: X News\nheadline: Pakistan U19 beat India"
         );
     }
 }

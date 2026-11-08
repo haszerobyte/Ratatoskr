@@ -106,11 +106,13 @@ const COMMON_WORDS: &[&str] = &[
 ];
 
 /// The query's distinct words worth matching, lower-case: three letters or
-/// more, or any word with a digit (years, versions, scores like "2nd").
+/// more, any word with a digit (years, versions, scores like "2nd"), and
+/// any word in a script where one or two characters make a word (Chinese,
+/// Japanese, Korean: 東京 is "Tokyo").
 fn query_terms(query: &str) -> Vec<String> {
     let mut terms: Vec<String> = Vec::new();
     for word in query.to_lowercase().split(|c: char| !c.is_alphanumeric()) {
-        let telling = word.chars().count() >= 3 || word.chars().any(|c| c.is_ascii_digit());
+        let telling = word.chars().count() >= 3 || word.chars().any(|c| c.is_ascii_digit() || c >= '\u{2E80}');
         if telling && !COMMON_WORDS.contains(&word) && !terms.iter().any(|t| t == word) {
             terms.push(word.to_string());
         }
@@ -407,6 +409,9 @@ mod tests {
     fn query_terms_keep_numbers_and_drop_filler() {
         assert_eq!(query_terms("India vs NZ 2nd ODI in 2026, the India"), ["india", "2nd", "odi", "2026"]);
         assert!(query_terms("a of in").is_empty());
+        // Regression: two-character words were dropped, so a Chinese or
+        // Japanese query had no terms and ranked by votes alone.
+        assert_eq!(query_terms("東京 天気"), ["東京", "天気"]);
     }
 
     #[test]
