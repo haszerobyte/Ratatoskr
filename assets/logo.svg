@@ -1,129 +1,33 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title desc">
   <title id="title">ratatoskr</title>
-  <desc id="desc">A dark squirrel on a branch of the world tree, carrying a glowing red message, with data running up the trunk, inside a round badge with a red rim.</desc>
-  <defs>
-    <radialGradient id="bg" cx="0.5" cy="0.42" r="0.6">
-      <stop offset="0" stop-color="#2a1114"/>
-      <stop offset="0.6" stop-color="#110708"/>
-      <stop offset="1" stop-color="#050304"/>
-    </radialGradient>
-    <linearGradient id="fur" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#4a4d55"/>
-      <stop offset="1" stop-color="#1d1f24"/>
-    </linearGradient>
-    <linearGradient id="tail" x1="0" y1="0" x2="1" y2="0.6">
-      <stop offset="0" stop-color="#e5323b"/>
-      <stop offset="0.35" stop-color="#5a2328"/>
-      <stop offset="1" stop-color="#26282e"/>
-    </linearGradient>
-    <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#3a3335"/>
-      <stop offset="1" stop-color="#1a1617"/>
-    </linearGradient>
-    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
-      <feGaussianBlur stdDeviation="3" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="5"/>
-    </filter>
-    <clipPath id="disc"><circle cx="128" cy="128" r="117"/></clipPath>
-  </defs>
+  <desc id="desc">A squirrel on a branch carrying a red terminal prompt, inside a black badge with a red ring.</desc>
 
   <!-- badge -->
-  <circle cx="128" cy="128" r="124" fill="#050304"/>
-  <circle cx="128" cy="128" r="117" fill="url(#bg)"/>
+  <circle cx="128" cy="128" r="124" fill="#0b0b0d"/>
+  <circle cx="128" cy="128" r="114" fill="none" stroke="#e5323b" stroke-width="4"/>
 
-  <g clip-path="url(#disc)">
-    <!-- the world tree: a central trunk, its crown and its roots, in silhouette -->
-    <g fill="none" stroke="#2e2428" stroke-linecap="round">
-      <path d="M128 260 C 126 200, 132 140, 126 80" stroke-width="20"/>
-      <path d="M126 84 C 110 60, 84 46, 50 42" stroke-width="9"/>
-      <path d="M127 84 C 144 58, 172 44, 210 40" stroke-width="9"/>
-      <path d="M126 82 C 124 60, 126 40, 122 14" stroke-width="7"/>
-      <path d="M90 52 C 80 36, 70 28, 56 22" stroke-width="4"/>
-      <path d="M168 50 C 180 34, 194 26, 206 20" stroke-width="4"/>
-      <path d="M70 44 C 56 52, 40 64, 30 78" stroke-width="3"/>
-      <path d="M190 42 C 206 50, 220 62, 228 76" stroke-width="3"/>
-      <path d="M124 40 C 108 30, 96 18, 92 6" stroke-width="3"/>
-      <path d="M124 36 C 140 28, 150 18, 156 6" stroke-width="3"/>
-    </g>
-    <!-- roots spreading under the badge -->
-    <g fill="none" stroke="#2e2428" stroke-linecap="round">
-      <path d="M126 204 C 112 218, 90 226, 60 236" stroke-width="5"/>
-      <path d="M130 204 C 144 218, 166 226, 196 236" stroke-width="5"/>
-      <path d="M128 206 C 124 224, 128 238, 124 256" stroke-width="4"/>
-      <path d="M100 222 C 92 232, 84 240, 80 252" stroke-width="3"/>
-      <path d="M158 222 C 166 232, 174 240, 178 252" stroke-width="3"/>
-    </g>
-    <!-- runes of the tree, faint, on the trunk below the branch -->
-    <path d="M128 208 V 222 M128 212 L 133 208 M128 216 L 133 212" fill="none" stroke="#5a2328" stroke-width="1.6" stroke-linecap="round"/>
+  <!-- branch -->
+  <path d="M50 186 H 206" stroke="#3a3b40" stroke-width="8" stroke-linecap="round"/>
 
-    <!-- the message's trail: data rising from it into the crown -->
-    <g fill="#e5323b" filter="url(#glow)">
-      <rect x="196" y="116" width="4" height="4" opacity="0.95"/>
-      <rect x="204" y="104" width="3" height="3" opacity="0.8"/>
-      <rect x="198" y="92" width="4" height="4" opacity="0.7"/>
-      <rect x="208" y="80" width="3" height="3" opacity="0.6"/>
-      <rect x="200" y="68" width="3" height="3" opacity="0.45"/>
-      <rect x="210" y="56" width="3" height="3" opacity="0.3"/>
-    </g>
-    <!-- glitch dashes, as in the avatar -->
-    <g fill="#e5323b" opacity="0.5">
-      <rect x="22" y="128" width="10" height="3"/>
-      <rect x="36" y="128" width="4" height="3"/>
-      <rect x="18" y="136" width="16" height="3"/>
-      <rect x="28" y="144" width="6" height="3"/>
-      <rect x="222" y="150" width="12" height="3"/>
-      <rect x="216" y="158" width="5" height="3"/>
-    </g>
-
-    <!-- the branch it sits on -->
-    <path d="M8 190 C 70 180, 160 186, 250 170" fill="none" stroke="url(#wood)" stroke-width="13" stroke-linecap="round"/>
-    <path d="M62 186 C 54 198, 48 204, 38 210" fill="none" stroke="#2e2428" stroke-width="5" stroke-linecap="round"/>
+  <g transform="translate(6 0)">
+  <!-- tail: one clean curl -->
+  <path d="M118 176 C 76 176, 58 148, 62 114 C 66 82, 92 66, 116 72 C 136 77, 140 100, 124 108 C 114 113, 104 104, 110 96"
+        fill="none" stroke="#ecedef" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="#ecedef">
+    <ellipse cx="140" cy="154" rx="26" ry="30"/>
+    <circle cx="160" cy="112" r="20"/>
+    <path d="M172 104 L 190 116 L 172 126 Z"/>
+    <path d="M148 98 L 150 76 L 164 94 Z"/>
+    <ellipse cx="150" cy="182" rx="14" ry="5"/>
   </g>
 
-  <!-- tail: a big curl, lit red from behind -->
-  <path d="M116 176
-           C 74 180, 46 156, 46 120
-           C 46 82, 74 56, 106 58
-           C 132 60, 146 84, 134 102
-           C 124 116, 104 112, 104 98
-           C 104 88, 114 84, 120 90
-           C 116 76, 96 74, 86 88
-           C 74 104, 78 136, 100 150
-           C 110 156, 118 160, 126 160 Z"
-        fill="url(#tail)"/>
-  <path d="M116 176 C 74 180, 46 156, 46 120 C 46 82, 74 56, 106 58"
-        fill="none" stroke="#ff4a52" stroke-width="2" opacity="0.8" filter="url(#glow)"/>
+  <!-- eye -->
+  <circle cx="166" cy="108" r="3.4" fill="#e5323b"/>
 
-  <!-- body, sitting up -->
-  <path d="M118 180 C 100 174, 102 138, 122 124 C 138 114, 160 120, 164 140 C 168 160, 158 180, 140 182 Z" fill="url(#fur)"/>
-  <ellipse cx="128" cy="166" rx="15" ry="13" fill="#2c2e34"/>
-  <path d="M120 180 C 126 184, 138 184, 146 180" fill="none" stroke="#1d1f24" stroke-width="5" stroke-linecap="round"/>
-
-  <path d="M106 160 C 102 146, 108 130, 122 124" fill="none" stroke="#ff4a52" stroke-width="1.6" opacity="0.7"/>
-  <ellipse cx="150" cy="183" rx="12" ry="4.5" fill="#2c2e34"/>
-  <path d="M150 138 C 154 144, 158 144, 162 140" fill="none" stroke="#3a3d44" stroke-width="7" stroke-linecap="round"/>
-
-  <!-- head -->
-  <path d="M146 104 C 146 88, 164 82, 174 90 C 182 96, 190 104, 188 112 C 186 118, 176 120, 166 120 C 154 120, 146 114, 146 104 Z" fill="url(#fur)"/>
-  <path d="M152 92 L 150 70 L 166 88 Z" fill="#34363c"/>
-  <path d="M152 88 L 151 76 L 159 86 Z" fill="#5a2328"/>
-  <circle cx="188" cy="110" r="2.4" fill="#0b0b0d"/>
-  <!-- a red eye -->
-  <circle cx="171" cy="99" r="3" fill="#ff3b44" filter="url(#glow)"/>
-  <circle cx="172" cy="98" r="0.9" fill="#ffd0d2"/>
-
-  <!-- the message it carries, glowing -->
-  <g filter="url(#glow)">
-    <rect x="160" y="124" width="28" height="20" rx="3" fill="#1a0a0c" stroke="#ff3b44" stroke-width="2.4"/>
-    <path d="M165 130 L 174 136 L 183 130" fill="none" stroke="#ff3b44" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- the message: a terminal prompt -->
+  <rect x="160" y="132" width="34" height="28" rx="5" fill="#e5323b"/>
+  <path d="M168 141 L 174 146 L 168 151" fill="none" stroke="#0b0b0d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M178 152 H 186" stroke="#0b0b0d" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="162" cy="146" r="6" fill="#ecedef"/>
   </g>
-  <!-- paws over the message -->
-  <ellipse cx="160" cy="138" rx="5" ry="4" fill="#3a3d44"/>
-  <ellipse cx="186" cy="140" rx="4" ry="3.5" fill="#3a3d44"/>
-
-  <!-- red rim -->
-  <circle cx="128" cy="128" r="119" fill="none" stroke="#e5323b" stroke-width="3" filter="url(#glow)"/>
 </svg>
