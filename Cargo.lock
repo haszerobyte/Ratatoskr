@@ -1627,7 +1627,7 @@ checksum = "a611d15b50743feb4c76b7d03edcb0e64f399c26961e4efe6975bc398be6aa3d"
 
 [[package]]
 name = "ratatoskr-web"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "futures",
