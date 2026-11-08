@@ -330,9 +330,12 @@ ratatoskr compared with the reference MCP fetch server,
 2026.11.4 (Python).
 
 **Setup:**
-- Apple M4 Pro, macOS 26.7, ratatoskr 0.1.0 release build;
+- one machine, ratatoskr 0.1.0 release build;
 - each tool runs in its own fresh process;
 - times are medians over 5 calls.
+
+The numbers are for comparison on the same machine, not absolutes: run
+`bench/compare.sh` to measure on yours.
 
 **As an MCP server:**
 
