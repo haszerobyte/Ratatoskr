@@ -436,6 +436,21 @@ mod tests {
         assert_eq!(leaders.len(), 2, "neither healthy engine sees every query");
     }
 
+    /// Regression: an engine that answered fast once outscored one never
+    /// asked, so with one engine per provider the untried one (DuckDuckGo
+    /// behind Bing) was never asked at all.
+    #[test]
+    fn an_untried_engine_goes_before_a_proven_one() {
+        let proven = Health::default();
+        proven.record(Some(10), Duration::from_millis(5));
+        let free = || RateLimiter::new(Duration::ZERO);
+        let seats = [("proven", free(), proven), ("untried", free(), Health::default())];
+        for _ in 0..20 {
+            let order = asking_order(seats.iter().collect(), |seat| (&seat.1, &seat.2));
+            assert_eq!(order[0].0, "untried");
+        }
+    }
+
     /// A fake engine recording that it was asked.
     struct Fake {
         name: &'static str,

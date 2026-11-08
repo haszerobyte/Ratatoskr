@@ -78,14 +78,23 @@ impl CircuitBreaker {
 }
 
 /// How much one answer moves an engine's [`Health`]: recent answers count
-/// most, and three bad ones in a row bring a healthy engine below an
-/// untried one.
+/// most, and three failures in a row take a reliable engine below one that
+/// answers half the time.
 const HEALTH_WEIGHT: f64 = 0.3;
+
+/// How long an engine's record takes to fade halfway back to an untried
+/// engine's while it is not asked: an engine that failed for a while, or
+/// lost every race to a faster one, gets tried again rather than never.
+const FORGET_HALF_LIFE: Duration = Duration::from_secs(600);
+
+/// An untried engine's score, above any engine's with a record (those are
+/// at most 1): every engine is tried before the records decide.
+const UNTRIED_SCORE: f64 = 10.0;
 
 /// How an engine has been doing lately, as moving averages over its answers:
 /// how often it gave results, how long it took, and how many it gave.
-/// Searches ask the healthiest engines first, and as many as their usual
-/// yield says a search needs.
+/// Searches ask untried engines first, then the healthiest, and as many as
+/// their usual yield says a search needs.
 pub struct Health(Mutex<HealthState>);
 
 #[derive(Clone, Copy)]
@@ -94,12 +103,18 @@ struct HealthState {
     success: f64,
     seconds: f64,
     results: f64,
+    /// When it last answered; None until it has.
+    last: Option<Instant>,
+}
+
+impl HealthState {
+    /// An untried engine: assumed to work, at an ordinary speed and yield.
+    const FRESH: Self = Self { success: 0.8, seconds: 1.5, results: 10.0, last: None };
 }
 
 impl Default for Health {
-    /// An untried engine: assumed to work, at an ordinary speed and yield.
     fn default() -> Self {
-        Self(Mutex::new(HealthState { success: 0.8, seconds: 1.5, results: 10.0 }))
+        Self(Mutex::new(HealthState::FRESH))
     }
 }
 
@@ -107,6 +122,7 @@ impl Health {
     /// Record one answer: `Some(n)` results, or `None` for a failure.
     pub fn record(&self, results: Option<usize>, took: Duration) {
         let mut state = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        state.last = Some(Instant::now());
         let toward = |old: f64, new: f64| old + HEALTH_WEIGHT * (new - old);
         state.seconds = toward(state.seconds, took.as_secs_f64());
         match results {
@@ -119,10 +135,16 @@ impl Health {
         }
     }
 
-    /// Higher is better: how often it answers, discounted by how slowly.
+    /// Higher is better: how often it answers, discounted by how slowly, its
+    /// record fading toward an untried engine's the longer it goes unasked.
     pub fn score(&self) -> f64 {
         let state = *self.0.lock().unwrap_or_else(|e| e.into_inner());
-        state.success / (1.0 + state.seconds)
+        let Some(last) = state.last else { return UNTRIED_SCORE };
+        let kept = 0.5f64.powf(last.elapsed().as_secs_f64() / FORGET_HALF_LIFE.as_secs_f64());
+        let fresh = HealthState::FRESH;
+        let success = fresh.success + kept * (state.success - fresh.success);
+        let seconds = fresh.seconds + kept * (state.seconds - fresh.seconds);
+        success / (1.0 + seconds)
     }
 
     /// How many results an answer of its usually holds.
