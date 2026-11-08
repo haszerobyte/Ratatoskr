@@ -2,7 +2,7 @@
 # "ratatoskr" is taken on crates.io; the library is still `ratatoskr` in code
 # (`use ratatoskr::…`) and the binary is still `ratatoskr`.
 name = "ratatoskr-web"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 license = "Apache-2.0"
 description = "Web search and page fetching for LLM tools: a keyless meta-search (Bing, Yahoo, DuckDuckGo, Yandex, Wikipedia, Grokipedia) with news, images, videos and books, an SSRF-safe fetcher, and an MCP server"
