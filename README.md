@@ -12,6 +12,8 @@
   <a href="https://github.com/haszerobyte/Ratatoskr/actions/workflows/ci.yml"><img src="https://github.com/haszerobyte/Ratatoskr/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://crates.io/crates/ratatoskr-web"><img src="https://img.shields.io/crates/v/ratatoskr-web" alt="crates.io"></a>
   <a href="https://docs.rs/ratatoskr-web"><img src="https://img.shields.io/docsrs/ratatoskr-web" alt="docs.rs"></a>
+  <a href="https://registry.modelcontextprotocol.io/v0/servers?search=io.github.haszerobyte/ratatoskr"><img src="https://img.shields.io/badge/MCP_Registry-io.github.haszerobyte%2Fratatoskr-blue" alt="MCP Registry"></a>
+  <a href="https://github.com/haszerobyte/Ratatoskr/pkgs/container/ratatoskr"><img src="https://img.shields.io/badge/container-ghcr.io%2Fhaszerobyte%2Fratatoskr-blue?logo=docker&logoColor=white" alt="Container image"></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License: Apache-2.0"></a>
 </p>
 
@@ -92,10 +94,14 @@ messages up and down the world tree.
   it against `SHA256SUMS`.
 - **From crates.io:** `cargo install ratatoskr-web --locked`. This needs
   `cmake` and libclang; see [Building from source](#building-from-source).
-- **As a container** (Linux, amd64 and arm64): `ghcr.io/haszerobyte/ratatoskr`.
-  It runs the MCP server on stdio by default, `docker run -i --rm
-  ghcr.io/haszerobyte/ratatoskr`, or any command:
-  `docker run --rm ghcr.io/haszerobyte/ratatoskr search "tokio select"`.
+- **As a container** (Linux, amd64 and arm64):
+  [`ghcr.io/haszerobyte/ratatoskr`](https://github.com/haszerobyte/Ratatoskr/pkgs/container/ratatoskr),
+  tagged with each version and `latest`:
+  ```sh
+  docker pull ghcr.io/haszerobyte/ratatoskr
+  docker run -i --rm ghcr.io/haszerobyte/ratatoskr                          # the MCP server on stdio
+  docker run --rm ghcr.io/haszerobyte/ratatoskr search "tokio select"       # any other command
+  ```
   [`packaging/docker/Dockerfile`](packaging/docker/Dockerfile) builds the same
   image from source: `docker build -f packaging/docker/Dockerfile .`
 
@@ -139,7 +145,9 @@ It returns a numbered list:
   `[text](url)`.
 
 Add it to your client. If `ratatoskr` isn't on the client's `PATH`, give its
-full path instead.
+full path instead. It's also listed in the official
+[MCP Registry](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.haszerobyte/ratatoskr)
+as `io.github.haszerobyte/ratatoskr`, for clients that install from there.
 
 **Claude Code**
 
@@ -167,6 +175,13 @@ args = ["mcp"]
     "ratatoskr": { "command": "ratatoskr", "args": ["mcp"] }
   }
 }
+```
+
+**With Docker instead of an installed binary**, in any of the configurations
+above use the container as the command:
+
+```json
+{ "command": "docker", "args": ["run", "-i", "--rm", "ghcr.io/haszerobyte/ratatoskr"] }
 ```
 
 **VS Code** (`.vscode/mcp.json`)
