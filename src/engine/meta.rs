@@ -218,6 +218,8 @@ struct Answers {
     sources: Vec<&'static str>,
     /// The URLs the web engines found, de-duplicated: what counts towards the limit.
     web_found: HashSet<String>,
+    /// The result providers whose web engines answered.
+    web_providers: HashSet<&'static str>,
     errors: Vec<String>,
     /// Web engines asked, and how many of them refused.
     web_asked: usize,
@@ -229,13 +231,24 @@ impl Meta {
     /// engines that refused. Returns the providers that answered.
     async fn ask(&self, batch: &[&Seat], request: &SearchRequest, answers: &mut Answers) -> Vec<&'static str> {
         let one = request.with_limit(1);
+        let names: Vec<&str> = batch.iter().map(|seat| seat.member.engine.name()).collect();
+        tracing::debug!("ratatoskr meta: asking {}", names.join(", "));
         let replies = join_all(batch.iter().map(|seat| {
             let asked = if seat.member.encyclopedia { &one } else { request };
             async move {
                 seat.limiter.wait_turn().await;
                 let started = Instant::now();
                 let reply = seat.member.engine.search_request(asked).await;
-                seat.health.record(reply.as_ref().ok().map(Vec::len), started.elapsed());
+                let took = started.elapsed();
+                seat.health.record(reply.as_ref().ok().map(Vec::len), took);
+                if let Ok(hits) = &reply {
+                    tracing::debug!(
+                        "ratatoskr meta: {} answered {} results in {} ms",
+                        seat.member.engine.name(),
+                        hits.len(),
+                        took.as_millis()
+                    );
+                }
                 reply
             }
         }))
@@ -252,6 +265,7 @@ impl Meta {
                         answered.push(member.provider);
                         if !member.encyclopedia {
                             answers.web_found.extend(hits.iter().map(|hit| url_key(&hit.url)));
+                            answers.web_providers.insert(member.provider);
                         }
                         answers.lists.push(hits);
                         answers.sources.push(name);
@@ -332,7 +346,15 @@ impl Meta {
             }
             answered.extend(self.ask(&batch, request, &mut answers).await);
             batch = Vec::new();
-            if answers.web_found.len() >= limit {
+            // Enough results, and from two providers when two can be had: one
+            // index alone gives the ranking no agreement to go on. A refusal
+            // (DuckDuckGo's challenge) used to leave a search on one engine
+            // while another provider's engine sat free; it is asked now, but
+            // only if free at once, never waited for.
+            let another_free = queue
+                .iter()
+                .any(|s| s.limiter.ready_in().is_zero() && !answers.web_providers.contains(s.member.provider));
+            if answers.web_found.len() >= limit && (answers.web_providers.len() >= 2 || !another_free) {
                 break;
             }
         }
@@ -530,6 +552,31 @@ mod tests {
 
     fn web_hits(prefix: &str) -> Vec<Hit> {
         (0..10).map(|i| hit(&format!("https://{prefix}.example/{i}"))).collect()
+    }
+
+    /// Regression: when DuckDuckGo (a Bing-family engine) refused with its
+    /// challenge, Yandex's answer alone filled the limit and the search ended
+    /// on one engine while Bing sat free: half the searches came back from
+    /// Yandex only, with no agreement for the ranking to go on.
+    #[tokio::test]
+    async fn a_refusal_does_not_leave_a_search_on_one_provider() {
+        for _ in 0..12 {
+            let asked = Arc::new(Mutex::new(Vec::new()));
+            let fake = |name, reply| Arc::new(Fake { name, reply, asked: asked.clone() }) as Arc<dyn Engine>;
+            let meta = Meta::new(
+                vec![
+                    Member::web(fake("duckduckgo", Err(EngineError::Refused("challenge".into()))), "bing"),
+                    Member::web(fake("bing", Ok(web_hits("b"))), "bing"),
+                    Member::web(fake("yandex", Ok(web_hits("x"))), "yandex"),
+                ],
+                Duration::from_secs(60),
+                Duration::ZERO,
+            );
+            let report = meta.search_report(&SearchRequest::new("x", 5)).await.unwrap();
+            let mut sources = report.sources.clone();
+            sources.sort();
+            assert_eq!(sources, ["bing", "yandex"], "asked: {:?}", asked.lock().unwrap());
+        }
     }
 
     #[tokio::test]
