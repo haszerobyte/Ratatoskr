@@ -43,7 +43,14 @@ impl RateLimiter {
     }
 }
 
-/// Open after a refusal for `cooldown`; doubles (to 4x) on refusals in a row.
+/// How many refusals in a row keep doubling the rest: up to 32x the cooldown
+/// (about five hours from the default ten minutes).
+const MAX_STREAK: u32 = 6;
+
+/// Open after a refusal for `cooldown`, doubling on each refusal in a row up
+/// to 32x; an answer resets it. A refusal is usually the engine flagging this
+/// address: asked again every few minutes, it only goes on refusing and keeps
+/// the flag fresh, where hours of quiet give it the chance to lapse.
 pub struct CircuitBreaker {
     cooldown: Duration,
     state: Mutex<(Option<Instant>, u32)>,
@@ -67,7 +74,7 @@ impl CircuitBreaker {
         if state.0.is_some_and(|until| until > Instant::now()) {
             return;
         }
-        state.1 = (state.1 + 1).min(3);
+        state.1 = (state.1 + 1).min(MAX_STREAK);
         let factor = 1u32 << (state.1 - 1);
         state.0 = Some(Instant::now() + self.cooldown * factor);
     }
@@ -238,20 +245,25 @@ mod tests {
     }
 
     #[test]
+    /// Regression (for the cap): the rest stopped doubling at 4x, so an engine
+    /// that had flagged the address was asked again every 40 minutes for good.
     fn breaker_opens_backs_off_and_resets() {
-        let breaker = CircuitBreaker::new(Duration::from_millis(40));
+        let breaker = CircuitBreaker::new(Duration::from_millis(10));
         let expire = || std::thread::sleep(breaker.open_for().unwrap_or_default() + Duration::from_millis(2));
         assert_eq!(breaker.open_for(), None);
         breaker.trip();
-        assert!(breaker.open_for().unwrap() > Duration::from_millis(30));
+        assert!(breaker.open_for().unwrap() > Duration::from_millis(5));
         expire();
         breaker.trip();
-        assert!(breaker.open_for().unwrap() > Duration::from_millis(70), "a refusal after the rest doubles it");
-        for _ in 0..2 {
+        assert!(breaker.open_for().unwrap() > Duration::from_millis(15), "a refusal after the rest doubles it");
+        for _ in 0..4 {
             expire();
             breaker.trip();
         }
-        assert!(breaker.open_for().unwrap() <= Duration::from_millis(160), "capped at 4x");
+        assert!(breaker.open_for().unwrap() > Duration::from_millis(250), "it keeps doubling: 32x after six");
+        expire();
+        breaker.trip();
+        assert!(breaker.open_for().unwrap() <= Duration::from_millis(320), "and stops at 32x");
         breaker.record_success();
         assert_eq!(breaker.open_for(), None);
     }

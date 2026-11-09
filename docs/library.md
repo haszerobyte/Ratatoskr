@@ -96,7 +96,7 @@ use ratatoskr::engine::{Engine, http_client, wikipedia::Wikipedia, yandex::Yande
 
 let settings = Settings {
     min_interval: Duration::from_secs(3),   // spacing between requests to one engine
-    cooldown: Duration::from_secs(900),     // rest after a refusal (doubles, up to 4x)
+    cooldown: Duration::from_secs(900),     // rest after a refusal (doubles, up to 32x)
     ..Settings::default()
 };
 let engines: Vec<Arc<dyn Engine>> = vec![
