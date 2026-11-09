@@ -19,8 +19,10 @@ cargo build --release          # target/release/ratatoskr
 cargo test                     # offline: tests use recorded pages and local fake servers
 ```
 
-CI builds and tests on Linux (x86_64, aarch64), macOS (Intel, Apple Silicon)
-and Windows.
+CI builds and tests on Linux (x86_64, aarch64), macOS (Intel) and Windows,
+and builds for Apple Silicon by cross-compiling on the Intel runner: GitHub's
+Apple Silicon runners are often unavailable, and a run must not wait on one.
+The released Apple Silicon binary is built the same way.
 
 ## Contributing
 

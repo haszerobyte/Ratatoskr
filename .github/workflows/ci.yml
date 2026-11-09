@@ -55,7 +55,10 @@ jobs:
         include:
           - { name: linux x86_64, os: ubuntu-24.04, experimental: false }
           - { name: linux aarch64, os: ubuntu-24.04-arm, experimental: false }
-          - { name: macos aarch64, os: macos-15, experimental: false }
+          # Apple Silicon runners are often unavailable ("capacity constraints"),
+          # which left runs queued and then cancelled: the arm64 build is
+          # cross-compiled on the Intel runner and checked, not run there.
+          - { name: macos aarch64, os: macos-15-intel, experimental: false, target: aarch64-apple-darwin }
           - { name: macos x86_64, os: macos-15-intel, experimental: false }
           - { name: windows x86_64, os: windows-2025, experimental: true }
     steps:
@@ -77,6 +80,11 @@ jobs:
           "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Append
       - name: Toolchain (from rust-toolchain.toml)
         run: rustup toolchain install && rustup show active-toolchain
+      - name: Cross-compilation target
+        if: matrix.target
+        run: rustup target add ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --locked --all-targets
-      - run: cargo test --locked
+      - run: cargo build --locked --all-targets ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
+      - name: cargo test --locked
+        if: ${{ !matrix.target }}
+        run: cargo test --locked
