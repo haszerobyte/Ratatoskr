@@ -30,6 +30,12 @@ local [HTTP API](#http-api) for scripts and automation tools, and a
 [Rust library](#library). In Norse myth, Ratatoskr is the squirrel who runs
 messages up and down the world tree.
 
+## Contents
+
+- [Quick start](#quick-start) · [Features](#features) · [Install](#install)
+- [MCP server](#mcp-server) · [Command line](#command-line) · [HTTP API](#http-api) · [Library](#library)
+- [Documentation](#documentation): how it works, configuration, performance, development
+
 ## Quick start
 
 1. Install the `ratatoskr` command, either:
@@ -38,7 +44,7 @@ messages up and down the world tree.
    - from the [releases](https://github.com/haszerobyte/Ratatoskr/releases),
      also prebuilt; or
    - with `cargo install ratatoskr-web --locked`, which builds it and needs
-     [cmake and libclang](#building-from-source).
+     [cmake and libclang](docs/development.md#building-from-source).
 2. Add it to your agent, for example Claude Code:
    ```sh
    claude mcp add ratatoskr -- ratatoskr mcp
@@ -49,23 +55,6 @@ messages up and down the world tree.
    ratatoskr search "tokio select macro"
    ratatoskr fetch https://www.rust-lang.org/
    ```
-
-## Contents
-
-- [Features](#features)
-- [Install](#install)
-- [MCP server](#mcp-server)
-- [Command line](#command-line)
-- [HTTP API](#http-api)
-- [Library](#library)
-- [Configuration](#configuration)
-- [How it works](#how-it-works): [search](#search), [fetch](#fetch),
-  [politeness and terms](#politeness-and-terms)
-- [Performance](#performance)
-- [Building from source](#building-from-source)
-- [Contributing](#contributing): [repository layout](#repository-layout)
-- [Releasing](#releasing)
-- [License](#license)
 
 ## Features
 
@@ -84,7 +73,7 @@ messages up and down the world tree.
 - **Safe fetching:** private, loopback and link-local addresses are refused,
   at connect time and on every redirect.
 - **Small and fast:** one 10 MB binary. As an MCP server it uses about 6 MB
-  at idle and is ready in 0.01 s (see [Performance](#performance)).
+  at idle and is ready in 0.01 s (see [Performance](docs/performance.md)).
 
 ## Install
 
@@ -96,7 +85,7 @@ messages up and down the world tree.
   (x86_64, aarch64), macOS (Intel, Apple Silicon) or Windows (x86_64). Check
   it against `SHA256SUMS`.
 - **From crates.io:** `cargo install ratatoskr-web --locked`. This needs
-  `cmake` and libclang; see [Building from source](#building-from-source).
+  `cmake` and libclang; see [Building from source](docs/development.md#building-from-source).
 - **As a container** (Linux, amd64 and arm64):
   [`ghcr.io/haszerobyte/ratatoskr`](https://github.com/haszerobyte/Ratatoskr/pkgs/container/ratatoskr),
   tagged with each version and `latest`:
@@ -266,50 +255,28 @@ curl -s localhost:8765/fetch  -d '{"url": "https://www.rust-lang.org/"}'
 | Endpoint | Body | Answer |
 |---|---|---|
 | `GET /health` | | `{"status": "ok", "name", "version"}` |
-| `POST /search` | the [`web_search`](#mcp-server) arguments: `query`, `type`, `limit`, `country`, `time`, `safesearch`, `page` | `{"type", "query", "engine"` (web) or `"sources"`, `"from_cache", "results": [...]}` |
+| `POST /search` | the [`web_search`](#mcp-server) arguments: `query`, `type`, `limit`, `country`, `time`, `safesearch`, `page` | `{"type", "query", "engine", "sources", "merged", "from_cache", "results": [...]}` (`engine` and `merged` for web only) |
 | `POST /fetch` | `{"url"}` | `{"url", "title", "content_type", "truncated", "text"}` |
 | `POST /search/text` | `{"query", "max_results", "region", "safesearch", "timelimit", "page"}` | `{"results": [{"title", "href", "body"}]}` |
 
-`/search/text` is the shape search servers commonly expose, so `ratatoskr serve`
-can stand in wherever such a server is configured, including another
-ratatoskr's `SEARCH_API_URL`.
-
-Errors are JSON `{"error": …}`: 400 for a bad request, 401 without the token,
-403 for a URL on a private network (with `"kind": "blocked"`) or a request
-refused as below, 413 for a body over 64 KB, 502 when every engine or the site
-failed.
-
-**Only loopback by default.** `--listen 0.0.0.0:8765` (any address but
-loopback) refuses to start without `RATATOSKR_API_TOKEN`; clients then send
-`Authorization: Bearer <token>`. Fetches can never reach the local network
-either way, but an open search relay would hand your address and its
-standing with the search engines to whoever finds it.
-
-**Not for web pages.** Without a token, only requests addressed to
-`localhost`, `127.0.0.1` or `[::1]` and not sent by another site's web page are
-served: a page open in your browser could otherwise make the server search
-and fetch for it, and read the answers by pointing its own name at 127.0.0.1
-(DNS rebinding). To call the server under another name, from a container
-for instance, set a token.
-
-In your own program: `ratatoskr::http::serve(Arc::new(rt), listener, token)`,
-or mount `ratatoskr::http::router(...)` in an axum app.
+It listens on this machine only unless given a token, and refuses requests
+from web pages. Error codes, the token, and the search-server endpoint
+`/search/text`: [docs/http-api.md](docs/http-api.md).
 
 ## Library
-
-### Searching
 
 ```rust
 use ratatoskr::{Ratatoskr, Sources};
 
 #[tokio::main]
 async fn main() {
-    // Optional keyed sources come from the environment (see Configuration).
+    // Optional keyed sources come from the environment (docs/configuration.md).
     let rt = Ratatoskr::standard(&Sources::from_env());
 
     match rt.search("rust async runtime", 5).await {
         Ok(found) => {
-            println!("answered by {} (cached: {})", found.engine, found.from_cache);
+            // e.g. "meta (bing, yandex; 2 duplicates merged; cached: false)"
+            println!("{}", found.provenance());
             for hit in found.hits {
                 println!("{}\n  {}\n  {}", hit.title, hit.url, hit.snippet);
             }
@@ -324,354 +291,22 @@ Build a `Ratatoskr` once and share it, for example in an `Arc`. Its pacing,
 health records, circuit breakers and cache only work across calls to the
 same instance.
 
-### Search options and the other kinds
+Search options, the news, images, videos and books searches, fetching, and
+your own engines and settings: [docs/library.md](docs/library.md).
 
-Options go in a `SearchRequest`. The web search and the news, images, videos
-and books searches all take one:
+## Documentation
 
-```rust
-use ratatoskr::{SafeSearch, SearchRequest, TimeLimit};
-
-let request = SearchRequest::new("raspberry pi 5", 5)
-    .country(Some("GB"))
-    .time(Some(TimeLimit::Week))
-    .safesearch(SafeSearch::Moderate)
-    .page(1);
-
-let web = rt.search_with(&request).await?;   // SearchOutcome: hits, engine, from_cache
-let news = rt.news(&request).await?;         // Found<NewsResult>: title, url, body, date, source, image
-let images = rt.images(&request).await?;     // Found<ImageResult>: image, thumbnail, url, width, height, source
-let videos = rt.videos(&request).await?;     // Found<VideoResult>: url, duration, publisher, views, …
-let books = rt.books(&request).await?;       // Found<BookResult>: authors, year, publisher, thumbnail, url
-println!("{}", ratatoskr::format::news(&news.results));  // the numbered text the tools return
-```
-
-`rt.search_in("weather", 5, Some("GB"))` is the short form for a country
-alone.
-
-### Fetching a page
-
-```rust
-use ratatoskr::fetch::FetchError;
-
-match rt.fetch("https://docs.rs/tokio/latest/tokio/macro.select.html").await {
-    Ok(page) => {
-        println!("{} ({})", page.title.unwrap_or_default(), page.content_type);
-        println!("{}", page.text);          // Markdown-ish text, links kept
-        if page.truncated { println!("[cut at a size cap]"); }
-        if let Some(pdf) = page.pdf { println!("a PDF of {} bytes", pdf.len()); }
-    }
-    Err(FetchError::Blocked(why)) => eprintln!("not a public address: {why}"),
-    Err(FetchError::Challenge(vendor)) => eprintln!("the site answered with a {vendor} bot check"),
-    Err(FetchError::Http(status)) => eprintln!("HTTP {status}"),
-    Err(other) => eprintln!("{other}"),
-}
-```
-
-| `FetchError` | Meaning |
-|---|---|
-| `BadUrl` | not http(s), unparseable, or no host |
-| `Blocked` | the target is loopback, private, link-local or otherwise not public |
-| `Http(status)` | the site answered with an error status |
-| `Challenge(vendor)` | a bot check (Cloudflare, DataDome, Imperva, …) instead of the page |
-| `Unsupported(type)` | not a type that can become text (images, archives, …) |
-| `TooLarge(cap)` | a PDF over the 32 MB cap |
-| `Transport(why)` | the request did not complete (timeout, DNS, TLS) |
-
-### Your own engines and settings
-
-`Ratatoskr::standard` uses every engine and the default settings. To choose
-the engines or change the limits, build one yourself:
-
-```rust
-use std::{sync::Arc, time::Duration};
-use ratatoskr::{Ratatoskr, Settings};
-use ratatoskr::engine::{Engine, http_client, wikipedia::Wikipedia, yandex::Yandex};
-
-let settings = Settings {
-    min_interval: Duration::from_secs(3),   // spacing between requests to one engine
-    cooldown: Duration::from_secs(900),     // rest after a refusal (doubles, up to 4x)
-    ..Settings::default()
-};
-let engines: Vec<Arc<dyn Engine>> = vec![
-    Arc::new(Yandex::new(settings.timeout)),
-    Arc::new(Wikipedia::new(http_client(settings.timeout), "en")),
-];
-let rt = Ratatoskr::new(engines, settings);
-```
-
-Any type that implements `ratatoskr::engine::Engine` can be added. An engine
-needs:
-- a `name` and a `search`;
-- optionally, `search_in` to localize results to a country;
-- optionally, `search_request` to take the time limit, safe search and page.
-
-The news, images, videos and books sources are added with
-`.with_verticals(…)`. Each implements `ratatoskr::vertical::Source`.
-
-`rt.status()` and `rt.vertical_status()` list each source and how long it is
-still resting, if it is.
-
-## Configuration
-
-Everything is optional.
-
-| Variable | Effect |
-|---|---|
-| `SEARCH_API_URL` | your own search server, asked after the meta-search. It answers `POST /search/text` (`{"query", "max_results"}`) with `{"results": [{"title", "href", "body"}]}`. Bind it to loopback. |
-| `BRAVE_SEARCH_API_KEY` | Brave's Search API, as a fallback |
-| `GOOGLE_CSE_KEY`, `GOOGLE_CSE_ID` | Google's Programmable Search, as a fallback (both needed) |
-| `RATATOSKR_CONTACT` | a URL or email added to the API engines' User-Agent, so their operators can reach you |
-
-The defaults (`Settings::default()`):
-
-| Setting | Default |
-|---|---|
-| spacing between requests to one engine | 2 s, plus up to 50% random jitter |
-| rest after a refusal | 10 min, doubling to at most 40 min |
-| cache | 15 min, 256 queries |
-| request timeout | 15 s |
-
-## How it works
-
-### Search
-
-A web search asks its sources in order, and the first one with results
-answers:
-
-1. **The meta-search:**
-   - **Engines:** Yahoo, DuckDuckGo and Bing (all three serve Bing's index,
-     so only one of them is asked per search) and Yandex (its own index).
-   - **Which engines are asked:**
-     - every engine keeps a running record of how often it answers, how fast,
-       and how many results it gives;
-     - an engine not yet tried goes first, then the healthiest, with some
-       randomness so no engine sees every query;
-     - as many are asked at once as their usual yield needs, at least two, so
-       one failing costs no extra round trip.
-   - **When it stops:** once there are enough distinct results. A typical
-     search costs two web requests, not one per engine.
-   - **Encyclopedias:** Wikipedia and Grokipedia each add the one article
-     whose title matches the query, if there is one. They're left out for a
-     later page or a time-limited search.
-   - **Ranking:** results are merged by URL and scored. Every engine that
-     found a page gives it a vote, worth less the lower it ranked it. The
-     page also earns points for each of the query's words in its title
-     (counted double), snippet and URL. Idea boards and short videos
-     (Pinterest, TikTok) score lower: engines rank them for nearly any query
-     and they seldom answer one. A page whose snippet one engine left empty
-     gets another engine's.
-2. **Your own search server** (`SEARCH_API_URL`), if configured.
-3. **Brave's and Google's APIs,** if keyed.
-4. **Wikipedia's full-text search.**
-
-If no web engine answers, the meta-search doesn't pass off the encyclopedia
-pages as an answer, so the next source gets its turn.
-
-The other kinds of search work the same way, each with its own sources:
-
-| Search | Sources |
-|---|---|
-| news | DuckDuckGo and Bing (Bing's index, one of them per search), Yahoo News |
-| images | Bing; DuckDuckGo when it doesn't ask for its proof of work |
-| videos | DuckDuckGo |
-| books | Open Library's official API |
-
-Dates in news results are ISO 8601, worked out from a timestamp or from an
-age such as "20 hours ago".
-
-Some engines aren't used:
-- **Google Search:** it answers every client that doesn't run JavaScript with
-  a page asking to enable it. Use Google's Programmable Search API instead
-  (`GOOGLE_CSE_KEY`, `GOOGLE_CSE_ID`).
-- **Brave and Mojeek:** their result pages ask for a CAPTCHA.
-- **Startpage:** it asks for a proof of work.
-
-### Fetch
-
-- **Which part of the page:**
-  - all of it that a reader sees, menus, header, sidebars and footer
-    included: no guess at the "main content", which on a scoreboard, a
-    listing or a search page drops the items it holds; scripts, styles,
-    a drop-down's options other than the one it shows and anything hidden (`hidden`,
-    `aria-hidden`, inline `display: none`) are left out;
-  - a menu the page repeats (header and footer, desktop and mobile) is read
-    once;
-  - a page rendered by script, with almost no text, adds the text fields of
-    its JSON-LD data.
-- **Formats:**
-  - HTML becomes text with headings, lists, ` | `-separated table cells,
-    `[text](absolute url)` links, code blocks fenced and kept as written,
-    inline code in backticks, and images as `[image: alt text]`;
-  - JSON, XML and plain text pass through;
-  - a PDF's text is extracted, and its bytes are returned in `page.pdf`.
-- **Size caps:** 2 MB of body, 32 MB for a PDF, and 100,000 characters of
-  text. A longer page first loses its link URLs (each link keeps its text),
-  which often makes it fit, and the text says so; one still too long is cut
-  at a line, with a closing note saying the page goes on, and `truncated` is
-  set.
-- **Redirects:** followed up to 5, each one checked against the address
-  rules.
-- **Retries:**
-  - a `403` or a bot check is tried once more as a different browser;
-  - a `429` asking to wait 5 s or less is waited out and tried once more.
-- **Cookies:** kept only for the duration of one fetch.
-- **Proxies:** environment proxies (`HTTP(S)_PROXY`) are ignored, since a
-  proxy would bypass the address checks.
-
-### Politeness and terms
-
-Ratatoskr is meant for an agent answering one person's questions, not for
-crawling:
-- each engine is paced, with random jitter;
-- an engine that refuses (`403`, `429`, a bot check, a throttled page) is
-  rested;
-- answers are cached;
-- **bot checks are never solved:** CAPTCHAs, Cloudflare checks and
-  proof-of-work walls are reported as such.
-
-Many sites refuse anything but a real browser, so the scraped engines and page
-fetches present as one, using [wreq](https://github.com/0x676e67/wreq):
-- TLS and HTTP/2 fingerprints, header order and navigation headers match the
-  browser;
-- the browser profiles cover recent Chrome, Edge and Firefox releases on
-  Linux, macOS and Windows;
-- each search starts a fresh browser profile with its own cookies.
-
-Some sites get ratatoskr's own, honest User-Agent instead:
-- **the API engines;**
-- **Wikimedia's sites** (Wikipedia, Wikidata, Wiktionary, …). Their
-  [User-Agent policy](https://meta.wikimedia.org/wiki/User-Agent_policy) asks
-  automated clients to identify themselves, and they rate-limit an
-  impersonated browser.
-
-Scraping search engines may be against their terms of service, and some
-sites' terms forbid automated access. You are responsible for how you use this
-software.
-
-## Performance
-
-ratatoskr compared with the reference MCP fetch server,
-[`mcp-server-fetch`](https://github.com/modelcontextprotocol/servers/tree/main/src/fetch)
-2026.11.4 (Python), as MCP servers:
-
-| | ratatoskr `web_fetch` | mcp-server-fetch `fetch` |
-|---|---|---|
-| ready to answer | **0.01 s** | 3.58 s |
-| memory at idle | **6 MB** | 95 MB |
-| memory after the calls | **44 MB** | 143 MB |
-| time per call (median) | **0.11 s** | 1.59 s |
-| install size | **9.8 MB**, one binary, search included | 83.9 MB environment |
-
-ratatoskr's own search, measured the same way:
-
-| `web_search` | |
-|---|---|
-| time per call (median) | 1.06 s |
-| memory at idle, after 5 searches | 6 MB, 20 MB |
-| one-shot command line | 1.13 s, 19 MB peak |
-
-**How it was measured:**
-- on one machine, with the ratatoskr 0.1.0 release build;
-- each tool runs in its own fresh process;
-- times are medians over 5 calls.
-
-The numbers are for comparison, not absolutes. Search time is mostly the
-search engines' own response time, and it varies with your network, location
-and the hour. Memory and startup barely vary.
-
-To measure on your machine, run [`bench/compare.sh`](bench/compare.sh) `[path/to/ratatoskr]`. It
-needs `uv` and `python3`, and installs the Python server into a throwaway
-environment.
-
-## Building from source
-
-The Rust toolchain version is pinned in `rust-toolchain.toml`; rustup picks
-it up automatically. wreq links BoringSSL, which needs:
-
-| OS | Install |
-|---|---|
-| Debian / Ubuntu | `sudo apt install cmake clang libclang-dev` |
-| Fedora | `sudo dnf install cmake clang-devel` |
-| macOS | `brew install cmake`, plus Xcode's command-line tools |
-| Windows | Visual Studio Build Tools, CMake, [NASM](https://nasm.us) and LLVM (`LIBCLANG_PATH`) |
-
-```sh
-git clone https://github.com/haszerobyte/Ratatoskr
-cd Ratatoskr
-cargo build --release          # target/release/ratatoskr
-cargo test                     # offline: tests use recorded pages and local fake servers
-```
-
-CI builds and tests on Linux (x86_64, aarch64), macOS (Intel, Apple Silicon)
-and Windows.
+- [How it works](docs/how-it-works.md): the meta-search and its ranking, how a page is read, politeness and terms
+- [Configuration](docs/configuration.md): environment variables and optional keyed sources
+- [HTTP API](docs/http-api.md): endpoints, errors and security
+- [Library](docs/library.md): the Rust API
+- [Performance](docs/performance.md): measurements, and how to run the benchmark
+- [Development](docs/development.md): building from source, repository layout, contributing, releasing
 
 ## Contributing
 
-Issues and pull requests are welcome. Before opening one, run:
-
-```sh
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
-```
-
-### Repository layout
-
-| Path | What's there |
-|---|---|
-| [`src/`](src) | the library; [`src/bin/ratatoskr.rs`](src/bin/ratatoskr.rs) is the command, [`src/mcp.rs`](src/mcp.rs) the MCP server |
-| [`src/engine/`](src/engine) | the web search engines and the meta-search that combines them |
-| [`src/vertical/`](src/vertical) | the news, images, videos and books searches |
-| [`tests/`](tests) | integration tests; [`tests/fixtures/`](tests/fixtures) holds recorded engine pages and trimmed real pages |
-| [`packaging/docker/`](packaging/docker) | the container image: built from source, and from the release binaries |
-| [`Dockerfile`](Dockerfile) | for MCP directories that build a server from the repository root: the published image |
-| [`packaging/mcp/`](packaging/mcp) | [`server.json`](packaging/mcp/server.json), the MCP Registry entry |
-| [`bench/`](bench) | the benchmark against other tools |
-| [`.github/workflows/`](.github/workflows) | CI and the release |
-
-### When a search engine changes its page
-
-Search engines change their pages. When an engine stops parsing:
-1. capture a fresh results page into [`tests/fixtures/`](tests/fixtures);
-2. replace its per-request tracking tokens with `TOKEN`;
-3. adjust the engine's parser.
-
-## Releasing
-
-Releases are published by the **Release** workflow, and only after CI
-passes. Run **Actions → Release → Run workflow** on `main` with the new
-version, e.g. `0.1.1`. There's no need to edit `Cargo.toml` first.
-
-The workflow runs these steps in order, stopping at the first failure:
-1. checks that the version is a semantic version, isn't below `Cargo.toml`'s,
-   and isn't released on GitHub or crates.io yet;
-2. writes it into `Cargo.toml` and `Cargo.lock`, and commits that to `main`
-   as "Release <version>";
-3. checks that the crate packages (`cargo publish --dry-run`);
-4. runs the full CI on that commit, on every platform;
-5. builds the binaries;
-6. pushes the container image of the Linux binaries to
-   `ghcr.io/haszerobyte/ratatoskr` (`<version>`, and `latest` unless it's a
-   pre-release);
-7. drafts the GitHub release with the binaries and their SHA-256 checksums,
-   so a GitHub-side failure stops it before anything is published;
-8. publishes `ratatoskr-web` to crates.io;
-9. tags the commit `v<version>` and publishes the drafted release;
-10. updates the [MCP Registry](https://registry.modelcontextprotocol.io)
-    entry from [`packaging/mcp/server.json`](packaging/mcp/server.json), pointing at that version's image. This runs
-    last, on its own: if it fails, the release is still complete.
-
-The first image push creates the `ratatoskr` package on GitHub as private:
-make it public once in its package settings, or `docker pull` and the
-registry entry won't work for anyone else.
-
-It needs these repository secrets:
-- **`CARGO_REGISTRY_TOKEN`** (required): a crates.io API token with the
-  publish-new and publish-update scopes.
-- **`RELEASE_TOKEN`** (optional): a fine-grained token with Contents read and
-  write on this repository only, used for the GitHub release. Without it, the
-  workflow's own token is used.
+Issues and pull requests are welcome. Building, the checks to run and the
+repository layout are in [docs/development.md](docs/development.md).
 
 ## License
 
