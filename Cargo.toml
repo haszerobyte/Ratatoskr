@@ -45,6 +45,8 @@ pdf-extract = "0.12"
 url = "2"
 serde_json = { version = "1", features = ["preserve_order"] }
 tracing = "0.1"
+# The command line's logs, on stderr when RUST_LOG is set (src/bin/ratatoskr.rs).
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "std", "ansi"] }
 # web_fetch presents as Chrome down to the TLS handshake: some sites (ESPNcricinfo)
 # refuse any other fingerprint whatever the User-Agent. Only release candidates
 # exist, so the versions are pinned. BoringSSL underneath: building needs cmake and libclang.

@@ -105,6 +105,15 @@ fn report<T>(found: Result<ratatoskr::Found<T>, ratatoskr::SearchFailure>, forma
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    // Logs only when asked for, and only to stderr: stdout is the results, or
+    // the MCP protocol, which a stray line would break. RUST_LOG=ratatoskr=debug
+    // shows each engine the meta-search asks and what it answered.
+    if std::env::var_os("RUST_LOG").is_some() {
+        tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .with_writer(std::io::stderr)
+            .init();
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     let rt = Ratatoskr::standard(&Sources::from_env());
     let command = args.first().map(String::as_str);
