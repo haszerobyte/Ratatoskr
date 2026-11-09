@@ -13,6 +13,7 @@
   <a href="https://crates.io/crates/ratatoskr-web"><img src="https://img.shields.io/crates/v/ratatoskr-web" alt="crates.io"></a>
   <a href="https://docs.rs/ratatoskr-web"><img src="https://img.shields.io/docsrs/ratatoskr-web" alt="docs.rs"></a>
   <a href="https://registry.modelcontextprotocol.io/v0/servers?search=io.github.haszerobyte/ratatoskr"><img src="https://img.shields.io/badge/MCP_Registry-io.github.haszerobyte%2Fratatoskr-blue" alt="MCP Registry"></a>
+  <a href="https://glama.ai/mcp/servers/haszerobyte/Ratatoskr"><img src="https://glama.ai/mcp/servers/haszerobyte/Ratatoskr/badges/score.svg" alt="Glama score"></a>
   <a href="https://github.com/haszerobyte/Ratatoskr/pkgs/container/ratatoskr"><img src="https://img.shields.io/badge/container-ghcr.io%2Fhaszerobyte%2Fratatoskr-blue?logo=docker&logoColor=white" alt="Container image"></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License: Apache-2.0"></a>
 </p>
