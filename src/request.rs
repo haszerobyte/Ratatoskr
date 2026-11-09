@@ -76,6 +76,24 @@ impl FromStr for TimeLimit {
     }
 }
 
+/// Why JSON arguments are not a search.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RequestError {
+    NoQuery,
+    Bad(BadOption),
+}
+
+impl fmt::Display for RequestError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoQuery => write!(f, "a query is needed"),
+            Self::Bad(bad) => write!(f, "{bad}"),
+        }
+    }
+}
+
+impl std::error::Error for RequestError {}
+
 /// A search: the words and how to search for them.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SearchRequest {
@@ -124,6 +142,24 @@ impl SearchRequest {
     /// search an encyclopedia's one best page belongs to.
     pub fn is_plain(&self) -> bool {
         self.page == 1 && self.time.is_none()
+    }
+
+    /// A request from JSON arguments, as the MCP tool and the HTTP API take
+    /// them: `query` (required), `limit` (default `default_limit`, at most
+    /// `max_limit`), `country`, `time`, `safesearch` and `page`.
+    pub fn from_json(arguments: &serde_json::Value, default_limit: u64, max_limit: u64) -> Result<Self, RequestError> {
+        use serde_json::Value;
+        let text = |key: &str| arguments.get(key).and_then(Value::as_str).map(str::trim).filter(|v| !v.is_empty());
+        let query = text("query").ok_or(RequestError::NoQuery)?;
+        let limit = arguments.get("limit").and_then(Value::as_u64).unwrap_or(default_limit).clamp(1, max_limit);
+        let time = text("time").map(str::parse::<TimeLimit>).transpose().map_err(RequestError::Bad)?;
+        let safesearch = text("safesearch").map(str::parse::<SafeSearch>).transpose().map_err(RequestError::Bad)?;
+        let page = arguments.get("page").and_then(Value::as_u64).unwrap_or(1).clamp(1, 100) as u32;
+        Ok(Self::new(query, limit as usize)
+            .country(text("country"))
+            .time(time)
+            .safesearch(safesearch.unwrap_or_default())
+            .page(page))
     }
 
     /// The key a cached answer to this request is stored under.

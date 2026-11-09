@@ -52,6 +52,8 @@ tracing = "0.1"
 wreq = { version = "=6.0.0-rc.31", default-features = false, features = ["webpki-roots", "tokio-rt", "gzip", "brotli", "deflate", "zstd", "stream", "cookies", "form", "query"] }
 # emulation-compression: the browser's Accept-Encoding, not wreq's own.
 wreq-util = { version = "=3.0.0-rc.14", default-features = false, features = ["emulation", "emulation-compression"] }
+# `ratatoskr serve`, the local HTTP API (http.rs): HTTP/1 on tokio, nothing more.
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 
 [dev-dependencies]
 axum = "0.8"

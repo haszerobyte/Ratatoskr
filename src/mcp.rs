@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 
-use crate::request::{SafeSearch, SearchRequest, TimeLimit};
+use crate::request::{RequestError, SearchRequest};
 use crate::{Ratatoskr, format};
 
 /// The newest protocol revision this server implements, and the ones before it
@@ -23,8 +23,8 @@ pub const PROTOCOL_VERSION: &str = "2025-06-18";
 const SUPPORTED_VERSIONS: [&str; 3] = [PROTOCOL_VERSION, "2025-03-26", "2024-11-05"];
 
 /// The most results one `web_search` call may ask for.
-const MAX_RESULTS: u64 = 20;
-const DEFAULT_RESULTS: u64 = 8;
+pub(crate) const MAX_RESULTS: u64 = 20;
+pub(crate) const DEFAULT_RESULTS: u64 = 8;
 
 /// Serve MCP on this process's stdin and stdout until stdin closes.
 pub async fn serve_stdio(rt: Arc<Ratatoskr>) -> std::io::Result<()> {
@@ -162,14 +162,10 @@ const TYPES: [&str; 5] = ["web", "news", "images", "videos", "books"];
 
 /// A search tool's arguments as a request; a bad value is a malformed call.
 fn request_from(tool: &str, arguments: &Value) -> Result<SearchRequest, (i64, String)> {
-    let text = |key: &str| arguments.get(key).and_then(Value::as_str).map(str::trim).filter(|v| !v.is_empty());
-    let query = text("query").ok_or((-32602, format!("{tool} needs a query")))?;
-    let limit = arguments.get("limit").and_then(Value::as_u64).unwrap_or(DEFAULT_RESULTS).clamp(1, MAX_RESULTS);
-    let bad = |error: crate::request::BadOption| (-32602, format!("{tool}: {error}"));
-    let time = text("time").map(str::parse::<TimeLimit>).transpose().map_err(bad)?;
-    let safesearch = text("safesearch").map(str::parse::<SafeSearch>).transpose().map_err(bad)?.unwrap_or_default();
-    let page = arguments.get("page").and_then(Value::as_u64).unwrap_or(1).clamp(1, 100) as u32;
-    Ok(SearchRequest::new(query, limit as usize).country(text("country")).time(time).safesearch(safesearch).page(page))
+    SearchRequest::from_json(arguments, DEFAULT_RESULTS, MAX_RESULTS).map_err(|error| match error {
+        RequestError::NoQuery => (-32602, format!("{tool} needs a query")),
+        RequestError::Bad(bad) => (-32602, format!("{tool}: {bad}")),
+    })
 }
 
 /// A search's outcome as the tool's text: the formatted results, or why not.

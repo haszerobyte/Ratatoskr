@@ -4,21 +4,50 @@
 //! ratatoskr search <query> [limit] [country] [options]
 //! ratatoskr fetch <url>
 //! ratatoskr mcp
+//! ratatoskr serve [--listen ADDRESS]
 //! ```
 //!
 //! Options: `--type web|news|images|videos|books`, `--time day|week|month|year`,
 //! `--safesearch on|moderate|off`, `--page N`, `--country XX`. `mcp` serves the tools to an MCP client over
-//! stdio. Optional sources come from the environment (SEARCH_API_URL,
-//! BRAVE_SEARCH_API_KEY, GOOGLE_CSE_KEY + GOOGLE_CSE_ID).
+//! stdio; `serve` serves them as a local HTTP API ([`ratatoskr::http`]) on
+//! 127.0.0.1:8765, or on `--listen`, where any address but loopback needs
+//! RATATOSKR_API_TOKEN. Optional sources come from the environment
+//! (SEARCH_API_URL, BRAVE_SEARCH_API_KEY, GOOGLE_CSE_KEY + GOOGLE_CSE_ID).
 
+use std::net::SocketAddr;
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use ratatoskr::{Ratatoskr, SafeSearch, SearchRequest, Sources, TimeLimit, format};
 
 const USAGE: &str = "usage: ratatoskr search <query> [limit] [country] [--type web|news|images|videos|books] \
 [--time day|week|month|year] [--safesearch on|moderate|off] [--page N] [--country XX]
        ratatoskr fetch <url>
-       ratatoskr mcp";
+       ratatoskr mcp
+       ratatoskr serve [--listen ADDRESS]   (RATATOSKR_API_TOKEN required off loopback)";
+
+/// Where `serve` listens unless told otherwise: this machine only.
+const DEFAULT_LISTEN: &str = "127.0.0.1:8765";
+
+/// `serve`'s address from its arguments, and the token it requires. An
+/// address other than loopback without a token is refused.
+fn listen(args: &[String], token: Option<String>) -> Result<(SocketAddr, Option<String>), String> {
+    let address = match args {
+        [] => DEFAULT_LISTEN,
+        [flag, address] if flag == "--listen" => address.as_str(),
+        _ => return Err("serve takes only --listen ADDRESS".into()),
+    };
+    let address: SocketAddr =
+        address.parse().map_err(|_| format!("--listen needs an address like {DEFAULT_LISTEN}, not {address:?}"))?;
+    let token = token.filter(|t| !t.trim().is_empty());
+    if ratatoskr::http::needs_token(&address) && token.is_none() {
+        return Err(format!(
+            "listening on {address} lets other machines use this one's search: set RATATOSKR_API_TOKEN, \
+             or listen on 127.0.0.1"
+        ));
+    }
+    Ok((address, token))
+}
 
 /// What `search` can search.
 const TYPES: [&str; 5] = ["web", "news", "images", "videos", "books"];
@@ -80,13 +109,40 @@ async fn main() -> ExitCode {
     let rt = Ratatoskr::standard(&Sources::from_env());
     let command = args.first().map(String::as_str);
     match command {
-        Some("mcp") if args.len() == 1 => match ratatoskr::mcp::serve_stdio(std::sync::Arc::new(rt)).await {
+        Some("mcp") if args.len() == 1 => match ratatoskr::mcp::serve_stdio(Arc::new(rt)).await {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("ratatoskr mcp: {error}");
                 ExitCode::FAILURE
             }
         },
+        Some("serve") => {
+            let (address, token) = match listen(&args[1..], std::env::var("RATATOSKR_API_TOKEN").ok()) {
+                Ok(parsed) => parsed,
+                Err(error) => {
+                    eprintln!("ratatoskr serve: {error}");
+                    return ExitCode::from(2);
+                }
+            };
+            let listener = match tokio::net::TcpListener::bind(address).await {
+                Ok(listener) => listener,
+                Err(error) => {
+                    eprintln!("ratatoskr serve: cannot listen on {address}: {error}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            eprintln!(
+                "ratatoskr serve: http://{address} (GET /health; POST /search, /fetch, /search/text){}",
+                if token.is_some() { ", token required" } else { "" }
+            );
+            match ratatoskr::http::serve(Arc::new(rt), listener, token).await {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("ratatoskr serve: {error}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
         Some("fetch") if args.len() == 2 => match rt.fetch(&args[1]).await {
             Ok(page) => {
                 println!(
@@ -157,5 +213,17 @@ mod tests {
         assert!(request(&args("rust --time fortnight")).unwrap_err().contains("day, week, month, year"));
         assert!(request(&args("--page")).is_err());
         assert!(request(&args("rust --bogus 1")).unwrap_err().contains("unknown option"));
+    }
+
+    #[test]
+    fn serve_listens_on_loopback_unless_given_an_address_and_a_token() {
+        let args = |line: &str| line.split_whitespace().map(str::to_owned).collect::<Vec<_>>();
+        assert_eq!(listen(&[], None).unwrap().0.to_string(), DEFAULT_LISTEN);
+        assert!(listen(&args("--listen 0.0.0.0:9000"), None).unwrap_err().contains("RATATOSKR_API_TOKEN"));
+        assert!(listen(&args("--listen 0.0.0.0:9000"), Some("  ".into())).is_err(), "a blank token is none");
+        let (address, token) = listen(&args("--listen 0.0.0.0:9000"), Some("t".into())).unwrap();
+        assert_eq!((address.port(), token.as_deref()), (9000, Some("t")));
+        assert!(listen(&args("--listen nowhere"), None).is_err());
+        assert!(listen(&args("--port 1"), None).is_err());
     }
 }

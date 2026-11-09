@@ -21,6 +21,7 @@
 pub mod engine;
 pub mod fetch;
 pub mod format;
+pub mod http;
 pub mod mcp;
 pub mod polite;
 pub mod request;
@@ -32,7 +33,7 @@ use std::time::Duration;
 
 use engine::{Engine, Hit};
 use polite::{Cache, CircuitBreaker, RateLimiter};
-pub use request::{SafeSearch, SearchRequest, TimeLimit};
+pub use request::{RequestError, SafeSearch, SearchRequest, TimeLimit};
 
 /// The User-Agent of the API engines (Wikipedia, Grokipedia, Brave's and
 /// Google's APIs, a search server): who is asking, not a browser. The scraped

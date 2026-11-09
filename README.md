@@ -25,8 +25,9 @@ Ratatoskr gives an agent two tools:
   reaches your local network.
 
 It comes as an [MCP server](#mcp-server) for any agent (Claude Code, Codex,
-Claude Desktop, Cursor, VS Code, …), a [command-line tool](#command-line) and
-a [Rust library](#library). In Norse myth, Ratatoskr is the squirrel who runs
+Claude Desktop, Cursor, VS Code, …), a [command-line tool](#command-line), a
+local [HTTP API](#http-api) for scripts and automation tools, and a
+[Rust library](#library). In Norse myth, Ratatoskr is the squirrel who runs
 messages up and down the world tree.
 
 ## Quick start
@@ -55,6 +56,7 @@ messages up and down the world tree.
 - [Install](#install)
 - [MCP server](#mcp-server)
 - [Command line](#command-line)
+- [HTTP API](#http-api)
 - [Library](#library)
 - [Configuration](#configuration)
 - [How it works](#how-it-works): [search](#search), [fetch](#fetch),
@@ -211,6 +213,7 @@ over any reader and writer.
 ratatoskr search <query> [limit] [country] [options]
 ratatoskr fetch <url>
 ratatoskr mcp                  # the MCP server, on stdin/stdout
+ratatoskr serve                # the HTTP API, on 127.0.0.1:8765 (see below)
 ```
 
 Search options:
@@ -245,6 +248,44 @@ $ ratatoskr fetch https://www.rust-lang.org/
 
 The exit code is 0 on success, 1 when every source failed, and 2 on a usage
 error.
+
+## HTTP API
+
+For anything that isn't an MCP client: a script in any language, n8n,
+Home Assistant, cron, an agent framework without MCP. One long-running
+process serves every caller, so they share its cache, its engine health and
+its pacing; the command line starts fresh each time.
+
+```sh
+ratatoskr serve                                   # http://127.0.0.1:8765
+curl -s localhost:8765/search -d '{"query": "tokio select macro", "limit": 3}'
+curl -s localhost:8765/search -d '{"query": "raspberry pi 5", "type": "news", "time": "week"}'
+curl -s localhost:8765/fetch  -d '{"url": "https://www.rust-lang.org/"}'
+```
+
+| Endpoint | Body | Answer |
+|---|---|---|
+| `GET /health` | | `{"status": "ok", "name", "version"}` |
+| `POST /search` | the [`web_search`](#mcp-server) arguments: `query`, `type`, `limit`, `country`, `time`, `safesearch`, `page` | `{"type", "query", "engine"` (web) or `"sources"`, `"from_cache", "results": [...]}` |
+| `POST /fetch` | `{"url"}` | `{"url", "title", "content_type", "truncated", "text"}` |
+| `POST /search/text` | `{"query", "max_results", "region", "safesearch", "timelimit", "page"}` | `{"results": [{"title", "href", "body"}]}` |
+
+`/search/text` is the shape search servers commonly expose, so `ratatoskr serve`
+can stand in wherever such a server is configured, including another
+ratatoskr's `SEARCH_API_URL`.
+
+Errors are JSON `{"error": …}`: 400 for a bad request, 401 without the token,
+403 for a URL on a private network (with `"kind": "blocked"`), 502 when every
+engine or the site failed.
+
+**Only loopback by default.** `--listen 0.0.0.0:8765` (any address but
+loopback) refuses to start without `RATATOSKR_API_TOKEN`; clients then send
+`Authorization: Bearer <token>`. Fetches can never reach the local network
+either way, but an open search relay would hand your address and its
+standing with the search engines to whoever finds it.
+
+In your own program: `ratatoskr::http::serve(Arc::new(rt), listener, token)`,
+or mount `ratatoskr::http::router(...)` in an axum app.
 
 ## Library
 
