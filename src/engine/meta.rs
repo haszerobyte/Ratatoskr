@@ -26,7 +26,7 @@ use std::time::{Duration, Instant};
 
 use futures::future::join_all;
 
-use super::{Engine, EngineError, Hit, SearchFuture, SearchRequest};
+use super::{Engine, EngineError, Hit, Report, ReportFuture, SearchFuture, SearchRequest};
 use crate::polite::{CircuitBreaker, Health, RateLimiter, asking_order, engines_needed};
 
 /// One engine of the meta-search.
@@ -161,6 +161,13 @@ fn is_category_listing(hit: &Hit) -> bool {
 /// duplicate's snippet fills in an empty one, so a page is not shown bare
 /// because the engine that answered first gave no summary.
 pub fn fuse(lists: Vec<Vec<Hit>>, query: &str) -> Vec<Hit> {
+    fuse_counted(lists, query).0
+}
+
+/// [`fuse`], and how many results another engine had already returned
+/// (merged into one).
+fn fuse_counted(lists: Vec<Vec<Hit>>, query: &str) -> (Vec<Hit>, usize) {
+    let mut merged = 0;
     struct Entry {
         hit: Hit,
         votes: f64,
@@ -178,6 +185,7 @@ pub fn fuse(lists: Vec<Vec<Hit>>, query: &str) -> Vec<Hit> {
             let vote = POSITION_DAMPING / (POSITION_DAMPING + position as f64);
             match by_key.get(&key) {
                 Some(&i) => {
+                    merged += 1;
                     let entry = &mut entries[i];
                     entry.votes += vote;
                     if entry.hit.snippet.trim().is_empty() {
@@ -200,12 +208,14 @@ pub fn fuse(lists: Vec<Vec<Hit>>, query: &str) -> Vec<Hit> {
         })
         .collect();
     scored.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
-    scored.into_iter().map(|(_, _, hit)| hit).collect()
+    (scored.into_iter().map(|(_, _, hit)| hit).collect(), merged)
 }
 
 #[derive(Default)]
 struct Answers {
     lists: Vec<Vec<Hit>>,
+    /// The engine behind each list, in the same order.
+    sources: Vec<&'static str>,
     /// The URLs the web engines found, de-duplicated: what counts towards the limit.
     web_found: HashSet<String>,
     errors: Vec<String>,
@@ -244,6 +254,7 @@ impl Meta {
                             answers.web_found.extend(hits.iter().map(|hit| url_key(&hit.url)));
                         }
                         answers.lists.push(hits);
+                        answers.sources.push(name);
                     }
                 }
                 Err(error) => {
@@ -257,6 +268,87 @@ impl Meta {
             }
         }
         answered
+    }
+
+    /// The meta-search itself: its results, the engines that gave them, and
+    /// how many it merged.
+    async fn report(&self, request: &SearchRequest) -> Result<Report, EngineError> {
+        let (query, limit) = (request.query.as_str(), request.limit);
+        let ready = |encyclopedia: bool| -> Vec<&Seat> {
+            self.seats
+                .iter()
+                .filter(|s| s.member.encyclopedia == encyclopedia && s.breaker.open_for().is_none())
+                .collect()
+        };
+        let web = asking_order(ready(false), |seat| (&seat.limiter, &seat.health));
+        // An encyclopedia adds one page: not worth waiting for its turn.
+        // Nor for a later page or a recent-only search: its one best page
+        // answers neither.
+        let encyclopedias: Vec<&Seat> = if request.is_plain() {
+            ready(true).into_iter().filter(|s| s.limiter.ready_in().is_zero()).collect()
+        } else {
+            Vec::new()
+        };
+        if web.is_empty() {
+            return Err(EngineError::Refused("every web engine is cooling down".into()));
+        }
+        let providers: HashSet<&str> = web.iter().map(|s| s.member.provider).collect();
+        let usual_yield = web.iter().map(|s| s.health.usual_yield()).sum::<f64>() / web.len() as f64;
+        let workers = engines_needed(limit, usual_yield, providers.len());
+        let mut answers = Answers::default();
+        let mut answered: HashSet<&'static str> = HashSet::new();
+        let mut queue: std::collections::VecDeque<_> = web.into();
+        // The encyclopedias go with the first web batch: one round trip, not two.
+        let mut batch = encyclopedias;
+        loop {
+            // An engine whose provider is already in this batch waits for
+            // the next one, in case that answer fails.
+            let mut later = Vec::new();
+            let mut taken = 0;
+            while taken < workers
+                && let Some(member) = queue.pop_front()
+            {
+                if answered.contains(member.member.provider) {
+                    continue;
+                }
+                // A busy engine (still inside its pace) is waited for only
+                // when no free one is left for this batch.
+                if taken > 0 && !member.limiter.ready_in().is_zero() {
+                    queue.push_front(member);
+                    break;
+                }
+                if batch.iter().any(|s| !s.member.encyclopedia && s.member.provider == member.member.provider) {
+                    later.push(member);
+                    continue;
+                }
+                batch.push(member);
+                taken += 1;
+            }
+            for member in later.into_iter().rev() {
+                queue.push_front(member);
+            }
+            if batch.is_empty() {
+                break;
+            }
+            answered.extend(self.ask(&batch, request, &mut answers).await);
+            batch = Vec::new();
+            if answers.web_found.len() >= limit {
+                break;
+            }
+        }
+        if !answers.web_found.is_empty() {
+            let (mut hits, merged) = fuse_counted(std::mem::take(&mut answers.lists), query);
+            hits.truncate(limit);
+            return Ok(Report { hits, sources: answers.sources, merged });
+        }
+        if answers.web_refusals == answers.web_asked {
+            return Err(EngineError::Refused(answers.errors.join("; ")));
+        }
+        if answers.errors.is_empty() {
+            Ok(Report::default())
+        } else {
+            Err(EngineError::Transport(answers.errors.join("; ")))
+        }
     }
 }
 
@@ -278,84 +370,11 @@ impl Engine for Meta {
     }
 
     fn search_request<'a>(&'a self, request: &'a SearchRequest) -> SearchFuture<'a> {
-        Box::pin(async move {
-            let (query, limit) = (request.query.as_str(), request.limit);
-            let ready = |encyclopedia: bool| -> Vec<&Seat> {
-                self.seats
-                    .iter()
-                    .filter(|s| s.member.encyclopedia == encyclopedia && s.breaker.open_for().is_none())
-                    .collect()
-            };
-            let web = asking_order(ready(false), |seat| (&seat.limiter, &seat.health));
-            // An encyclopedia adds one page: not worth waiting for its turn.
-            // Nor for a later page or a recent-only search: its one best page
-            // answers neither.
-            let encyclopedias: Vec<&Seat> = if request.is_plain() {
-                ready(true).into_iter().filter(|s| s.limiter.ready_in().is_zero()).collect()
-            } else {
-                Vec::new()
-            };
-            if web.is_empty() {
-                return Err(EngineError::Refused("every web engine is cooling down".into()));
-            }
-            let providers: HashSet<&str> = web.iter().map(|s| s.member.provider).collect();
-            let usual_yield = web.iter().map(|s| s.health.usual_yield()).sum::<f64>() / web.len() as f64;
-            let workers = engines_needed(limit, usual_yield, providers.len());
-            let mut answers = Answers::default();
-            let mut answered: HashSet<&'static str> = HashSet::new();
-            let mut queue: std::collections::VecDeque<_> = web.into();
-            // The encyclopedias go with the first web batch: one round trip, not two.
-            let mut batch = encyclopedias;
-            loop {
-                // An engine whose provider is already in this batch waits for
-                // the next one, in case that answer fails.
-                let mut later = Vec::new();
-                let mut taken = 0;
-                while taken < workers
-                    && let Some(member) = queue.pop_front()
-                {
-                    if answered.contains(member.member.provider) {
-                        continue;
-                    }
-                    // A busy engine (still inside its pace) is waited for only
-                    // when no free one is left for this batch.
-                    if taken > 0 && !member.limiter.ready_in().is_zero() {
-                        queue.push_front(member);
-                        break;
-                    }
-                    if batch.iter().any(|s| !s.member.encyclopedia && s.member.provider == member.member.provider) {
-                        later.push(member);
-                        continue;
-                    }
-                    batch.push(member);
-                    taken += 1;
-                }
-                for member in later.into_iter().rev() {
-                    queue.push_front(member);
-                }
-                if batch.is_empty() {
-                    break;
-                }
-                answered.extend(self.ask(&batch, request, &mut answers).await);
-                batch = Vec::new();
-                if answers.web_found.len() >= limit {
-                    break;
-                }
-            }
-            if !answers.web_found.is_empty() {
-                let mut hits = fuse(std::mem::take(&mut answers.lists), query);
-                hits.truncate(limit);
-                return Ok(hits);
-            }
-            if answers.web_refusals == answers.web_asked {
-                return Err(EngineError::Refused(answers.errors.join("; ")));
-            }
-            if answers.errors.is_empty() {
-                Ok(Vec::new())
-            } else {
-                Err(EngineError::Transport(answers.errors.join("; ")))
-            }
-        })
+        Box::pin(async move { self.report(request).await.map(|report| report.hits) })
+    }
+
+    fn search_report<'a>(&'a self, request: &'a SearchRequest) -> ReportFuture<'a> {
+        Box::pin(self.report(request))
     }
 }
 
@@ -511,6 +530,26 @@ mod tests {
 
     fn web_hits(prefix: &str) -> Vec<Hit> {
         (0..10).map(|i| hit(&format!("https://{prefix}.example/{i}"))).collect()
+    }
+
+    #[tokio::test]
+    async fn the_report_names_the_engines_and_counts_what_they_shared() {
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let fake = |name, reply| Arc::new(Fake { name, reply, asked: asked.clone() }) as Arc<dyn Engine>;
+        let pages = |prefix: &str| (0..2).map(|i| hit(&format!("https://{prefix}.example/{i}"))).collect::<Vec<_>>();
+        let alpha: Vec<Hit> = pages("both").into_iter().chain(pages("a")).collect();
+        let beta: Vec<Hit> = pages("both").into_iter().chain(pages("b")).collect();
+        let meta = Meta::new(
+            vec![Member::web(fake("alpha", Ok(alpha)), "alpha"), Member::web(fake("beta", Ok(beta)), "beta")],
+            Duration::from_secs(60),
+            Duration::ZERO,
+        );
+        let report = meta.search_report(&SearchRequest::new("x", 10)).await.unwrap();
+        let mut sources = report.sources.clone();
+        sources.sort();
+        assert_eq!(sources, ["alpha", "beta"]);
+        assert_eq!((report.hits.len(), report.merged), (6, 2), "the two pages both returned are merged");
+        assert_eq!(meta.search_request(&SearchRequest::new("x", 10)).await.unwrap().len(), 6, "the same hits");
     }
 
     #[tokio::test]

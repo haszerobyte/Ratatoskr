@@ -181,7 +181,8 @@ async fn search(State(app): State<Arc<App>>, headers: HeaderMap, body: Body) -> 
             Ok(outcome) => reply(
                 StatusCode::OK,
                 json!({"type": "web", "query": request.query, "engine": outcome.engine,
-                       "from_cache": outcome.from_cache, "results": outcome.hits.iter().map(hit).collect::<Vec<_>>()}),
+                       "sources": outcome.sources, "merged": outcome.merged, "from_cache": outcome.from_cache,
+                       "results": outcome.hits.iter().map(hit).collect::<Vec<_>>()}),
             ),
             Err(failure) => unavailable(&failure),
         },
@@ -357,6 +358,7 @@ mod tests {
         let (status, found) = post(&base, "/search", json!({"query": "rust", "limit": 3}), None).await;
         assert_eq!(status, 200);
         assert_eq!((found["type"].as_str(), found["engine"].as_str()), (Some("web"), Some("fixed")));
+        assert_eq!((found["sources"].clone(), found["merged"].as_u64()), (json!(["fixed"]), Some(0)));
         assert_eq!(found["results"].as_array().unwrap().len(), 3);
         assert_eq!(found["results"][0], json!({"title": "rust 1", "url": "https://e.example/1", "snippet": "s"}));
 

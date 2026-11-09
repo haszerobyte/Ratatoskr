@@ -170,12 +170,7 @@ async fn main() -> ExitCode {
             match kind.as_str() {
                 "web" => match rt.search_with(&request).await {
                     Ok(outcome) => {
-                        println!(
-                            "engine: {} (cached: {})\n{}",
-                            outcome.engine,
-                            outcome.from_cache,
-                            format::hits(&outcome.hits)
-                        );
+                        println!("engine: {}\n{}", outcome.provenance(), format::hits(&outcome.hits));
                         ExitCode::SUCCESS
                     }
                     Err(failure) => {

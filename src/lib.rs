@@ -61,7 +61,31 @@ pub struct SearchOutcome {
     pub hits: Vec<Hit>,
     /// The engine that answered.
     pub engine: &'static str,
+    /// The engines whose answers made the results: several for the
+    /// meta-search, the engine itself otherwise.
+    pub sources: Vec<&'static str>,
+    /// How many results more than one engine returned, merged into one.
+    pub merged: usize,
     pub from_cache: bool,
+}
+
+impl SearchOutcome {
+    /// Where the results came from, in a line: `meta (bing, yandex;
+    /// 3 duplicates merged; cached: false)`, or `wikipedia (cached: false)`
+    /// for one engine.
+    pub fn provenance(&self) -> String {
+        let mut parts = Vec::new();
+        if self.sources.as_slice() != [self.engine] && !self.sources.is_empty() {
+            parts.push(self.sources.join(", "));
+        }
+        match self.merged {
+            0 => {}
+            1 => parts.push("1 duplicate merged".into()),
+            n => parts.push(format!("{n} duplicates merged")),
+        }
+        parts.push(format!("cached: {}", self.from_cache));
+        format!("{} ({})", self.engine, parts.join("; "))
+    }
 }
 
 /// Why no engine could answer.
@@ -211,7 +235,8 @@ impl Verticals {
 
 pub struct Ratatoskr {
     slots: Vec<Slot>,
-    cache: Cache,
+    /// Web answers with where they came from, so a cached one reports it too.
+    cache: Cache<engine::Report>,
     fetcher: fetch::Fetcher,
     news: Kind<vertical::NewsResult>,
     images: Kind<vertical::ImageResult>,
@@ -334,8 +359,9 @@ impl Ratatoskr {
     /// search, page ([`SearchRequest`]).
     pub async fn search_with(&self, request: &SearchRequest) -> Result<SearchOutcome, SearchFailure> {
         let key = request.cache_key("text");
-        if let Some((engine, hits)) = self.cache.get(&key) {
-            return Ok(SearchOutcome { hits, engine, from_cache: true });
+        if let Some((engine, report)) = self.cache.get(&key) {
+            let engine::Report { hits, sources, merged } = report;
+            return Ok(SearchOutcome { hits, engine, sources, merged, from_cache: true });
         }
         let mut attempts = Vec::new();
         for slot in &self.slots {
@@ -347,11 +373,12 @@ impl Ratatoskr {
             if !slot.engine.paces_itself() {
                 slot.limiter.wait_turn().await;
             }
-            match slot.engine.search_request(request).await {
-                Ok(hits) if !hits.is_empty() => {
+            match slot.engine.search_report(request).await {
+                Ok(report) if !report.hits.is_empty() => {
                     slot.breaker.record_success();
-                    self.cache.put(key, name, hits.clone());
-                    return Ok(SearchOutcome { hits, engine: name, from_cache: false });
+                    self.cache.put(key, name, report.clone());
+                    let engine::Report { hits, sources, merged } = report;
+                    return Ok(SearchOutcome { hits, engine: name, sources, merged, from_cache: false });
                 }
                 Ok(_) => attempts.push((name, "no results".into())),
                 Err(error) => {
@@ -385,6 +412,35 @@ impl Ratatoskr {
             .chain(tag("videos", self.videos.pool.status()))
             .chain(tag("books", self.books.pool.status()))
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod outcome_tests {
+    use super::SearchOutcome;
+
+    #[test]
+    fn provenance_names_the_engines_and_what_was_merged() {
+        let outcome = |engine, sources: &[&'static str], merged| SearchOutcome {
+            hits: Vec::new(),
+            engine,
+            sources: sources.to_vec(),
+            merged,
+            from_cache: false,
+        };
+        assert_eq!(
+            outcome("meta", &["bing", "yandex", "wikipedia"], 3).provenance(),
+            "meta (bing, yandex, wikipedia; 3 duplicates merged; cached: false)"
+        );
+        assert_eq!(
+            outcome("meta", &["bing", "yandex"], 1).provenance(),
+            "meta (bing, yandex; 1 duplicate merged; cached: false)"
+        );
+        assert_eq!(
+            outcome("wikipedia", &["wikipedia"], 0).provenance(),
+            "wikipedia (cached: false)",
+            "one engine: itself"
+        );
     }
 }
 

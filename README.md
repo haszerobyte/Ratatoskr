@@ -225,7 +225,7 @@ Search options:
 
 ```console
 $ ratatoskr search "tokio select macro" 2
-engine: meta (cached: false)
+engine: meta (bing, yandex; cached: false)
 1. select in tokio - Rust
    https://docs.rs/tokio/latest/tokio/macro.select.html
    tokio. Macro select.The select! macro must be used inside of async functions, closures, and blocks…

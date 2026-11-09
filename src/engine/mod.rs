@@ -60,6 +60,18 @@ impl std::fmt::Display for EngineError {
 
 pub type SearchFuture<'a> = Pin<Box<dyn Future<Output = Result<Vec<Hit>, EngineError>> + Send + 'a>>;
 
+/// A search's results with where they came from: the engines whose answers
+/// made them, and how many results more than one engine returned (merged
+/// into one).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Report {
+    pub hits: Vec<Hit>,
+    pub sources: Vec<&'static str>,
+    pub merged: usize,
+}
+
+pub type ReportFuture<'a> = Pin<Box<dyn Future<Output = Result<Report, EngineError>> + Send + 'a>>;
+
 pub trait Engine: Send + Sync {
     fn name(&self) -> &'static str;
     fn search<'a>(&'a self, query: &'a str, limit: usize) -> SearchFuture<'a>;
@@ -77,6 +89,18 @@ pub trait Engine: Send + Sync {
     fn search_request<'a>(&'a self, request: &'a SearchRequest) -> SearchFuture<'a> {
         self.search_in(&request.query, request.limit, request.country.as_deref())
     }
+
+    /// [`Engine::search_request`] with where its results came from. One
+    /// engine reports itself, nothing merged; the meta-search reports the
+    /// engines it combined.
+    fn search_report<'a>(&'a self, request: &'a SearchRequest) -> ReportFuture<'a> {
+        Box::pin(async move {
+            let hits = self.search_request(request).await?;
+            let sources = if hits.is_empty() { Vec::new() } else { vec![self.name()] };
+            Ok(Report { hits, sources, merged: 0 })
+        })
+    }
+
     /// Whether the engine spaces its own requests (the meta-search paces each
     /// of its engines), so the caller should not add its own wait.
     fn paces_itself(&self) -> bool {
