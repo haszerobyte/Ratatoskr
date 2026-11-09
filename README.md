@@ -576,6 +576,7 @@ cargo test
 | [`src/vertical/`](src/vertical) | the news, images, videos and books searches |
 | [`tests/`](tests) | integration tests; [`tests/fixtures/`](tests/fixtures) holds recorded engine pages and trimmed real pages |
 | [`packaging/docker/`](packaging/docker) | the container image: built from source, and from the release binaries |
+| [`Dockerfile`](Dockerfile) | for MCP directories that build a server from the repository root: the published image |
 | [`packaging/mcp/`](packaging/mcp) | [`server.json`](packaging/mcp/server.json), the MCP Registry entry |
 | [`bench/`](bench) | the benchmark against other tools |
 | [`.github/workflows/`](.github/workflows) | CI and the release |
