@@ -25,6 +25,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::body::Bytes;
+use axum::extract::rejection::BytesRejection;
 use axum::extract::{DefaultBodyLimit, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -43,6 +44,9 @@ const MAX_BODY: usize = 64 * 1024;
 /// A search server's default and largest result counts.
 const SEARCH_TEXT_DEFAULT: u64 = 10;
 const SEARCH_TEXT_MAX: u64 = 25;
+
+/// A request body, or why it could not be read (too large, cut off).
+type Body = Result<Bytes, BytesRejection>;
 
 struct App {
     rt: Arc<Ratatoskr>,
@@ -64,6 +68,7 @@ pub fn router(rt: Arc<Ratatoskr>, token: Option<String>) -> Router {
         .route("/fetch", post(fetch))
         .route("/search/text", post(search_text))
         .fallback(not_found)
+        .method_not_allowed_fallback(not_allowed)
         .layer(DefaultBodyLimit::max(MAX_BODY))
         .with_state(app)
 }
@@ -85,10 +90,39 @@ fn error(status: StatusCode, message: impl Into<String>) -> Response {
     reply(status, json!({"error": message.into()}))
 }
 
-/// The token checked in constant time, so its bytes cannot be guessed one by
-/// one from how long a refusal takes.
+/// Whether `host` (a Host header or an origin's host, with or without a port)
+/// names this machine: `localhost`, a 127.x.x.x address or `[::1]`.
+fn is_local_host(host: &str) -> bool {
+    let name = if host.starts_with('[') {
+        host.split_inclusive(']').next().unwrap_or(host)
+    } else {
+        host.split(':').next().unwrap_or(host)
+    };
+    let name = name.to_ascii_lowercase();
+    name == "localhost" || name == "[::1]" || name.parse::<std::net::Ipv4Addr>().is_ok_and(|ip| ip.is_loopback())
+}
+
+/// Without a token, only a request this machine's own programs send. A web
+/// page open in a browser can send requests to a server on this machine too:
+/// it carries the page's `Origin`, and a page that re-points its own name at
+/// 127.0.0.1 ("DNS rebinding", which also lets it read the answers) sends a
+/// `Host` naming its site. Either is refused, so a page cannot borrow this
+/// machine's address to search and fetch.
+fn local_request(headers: &HeaderMap) -> bool {
+    // A header that is not text names nothing local.
+    let text = |name: header::HeaderName| headers.get(name).map(|v| v.to_str().unwrap_or("\u{0}"));
+    let host_ok = text(header::HOST).is_none_or(is_local_host);
+    let origin_ok = text(header::ORIGIN).is_none_or(|origin| {
+        url::Url::parse(origin).ok().and_then(|u| u.host_str().map(is_local_host)).unwrap_or(false)
+    });
+    host_ok && origin_ok
+}
+
+/// With a token, the token, checked in constant time so its bytes cannot be
+/// guessed one by one from how long a refusal takes; without one, a request
+/// from this machine's own programs only.
 fn authorized(app: &App, headers: &HeaderMap) -> bool {
-    let Some(token) = &app.token else { return true };
+    let Some(token) = &app.token else { return local_request(headers) };
     let given = headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
@@ -100,10 +134,19 @@ fn authorized(app: &App, headers: &HeaderMap) -> bool {
 
 /// The request's JSON object, or the reply refusing it (boxed: a response is
 /// large next to the object).
-fn arguments(app: &App, headers: &HeaderMap, body: &Bytes) -> Result<Value, Box<Response>> {
+fn arguments(app: &App, headers: &HeaderMap, body: &Body) -> Result<Value, Box<Response>> {
     if !authorized(app, headers) {
-        return Err(Box::new(error(StatusCode::UNAUTHORIZED, "a valid Authorization: Bearer token is needed")));
+        return Err(Box::new(if app.token.is_some() {
+            error(StatusCode::UNAUTHORIZED, "a valid Authorization: Bearer token is needed")
+        } else {
+            error(
+                StatusCode::FORBIDDEN,
+                "without a token only requests to localhost from this machine's own programs are served",
+            )
+        }));
     }
+    // A body over the limit (413) or unreadable is answered in JSON too.
+    let body = body.as_ref().map_err(|rejection| Box::new(error(rejection.status(), rejection.body_text())))?;
     serde_json::from_slice::<Value>(body)
         .ok()
         .filter(Value::is_object)
@@ -118,7 +161,11 @@ async fn not_found() -> Response {
     error(StatusCode::NOT_FOUND, "no such endpoint: GET /health, POST /search, /fetch or /search/text")
 }
 
-async fn search(State(app): State<Arc<App>>, headers: HeaderMap, body: Bytes) -> Response {
+async fn not_allowed() -> Response {
+    error(StatusCode::METHOD_NOT_ALLOWED, "GET /health; POST /search, /fetch and /search/text")
+}
+
+async fn search(State(app): State<Arc<App>>, headers: HeaderMap, body: Body) -> Response {
     let args = match arguments(&app, &headers, &body) {
         Ok(args) => args,
         Err(refused) => return *refused,
@@ -170,7 +217,7 @@ fn unavailable(failure: &SearchFailure) -> Response {
     error(StatusCode::BAD_GATEWAY, failure.to_string())
 }
 
-async fn fetch(State(app): State<Arc<App>>, headers: HeaderMap, body: Bytes) -> Response {
+async fn fetch(State(app): State<Arc<App>>, headers: HeaderMap, body: Body) -> Response {
     let args = match arguments(&app, &headers, &body) {
         Ok(args) => args,
         Err(refused) => return *refused,
@@ -202,7 +249,7 @@ async fn fetch(State(app): State<Arc<App>>, headers: HeaderMap, body: Bytes) -> 
 
 /// A search server's `/search/text`: its field names mapped onto a search.
 /// `region` is `<country>-<language>` (`us-en`); `wt-wt` means anywhere.
-async fn search_text(State(app): State<Arc<App>>, headers: HeaderMap, body: Bytes) -> Response {
+async fn search_text(State(app): State<Arc<App>>, headers: HeaderMap, body: Body) -> Response {
     let args = match arguments(&app, &headers, &body) {
         Ok(args) => args,
         Err(refused) => return *refused,
@@ -348,6 +395,59 @@ mod tests {
         assert_eq!(post(&base, "/search", json!({"query": "x"}), Some("wrong")).await.0, 401);
         assert_eq!(post(&base, "/search", json!({"query": "x"}), Some("s3cret")).await.0, 200);
         assert_eq!(reqwest::get(format!("{base}/health")).await.unwrap().status().as_u16(), 200);
+    }
+
+    async fn post_as(base: &str, host: Option<&str>, origin: Option<&str>, token: Option<&str>) -> u16 {
+        let mut request = reqwest::Client::new().post(format!("{base}/search")).json(&json!({"query": "x"}));
+        if let Some(host) = host {
+            request = request.header(reqwest::header::HOST, host);
+        }
+        if let Some(origin) = origin {
+            request = request.header(reqwest::header::ORIGIN, origin);
+        }
+        if let Some(token) = token {
+            request = request.bearer_auth(token);
+        }
+        request.send().await.unwrap().status().as_u16()
+    }
+
+    /// Regression: any web page open in a browser could send this server
+    /// requests, and by re-pointing its own name at 127.0.0.1 (DNS
+    /// rebinding) read the answers, searching and fetching from this machine.
+    #[tokio::test]
+    async fn a_web_page_cannot_use_the_server_without_a_token() {
+        let base = start(None).await;
+        let port = base.rsplit(':').next().unwrap().to_string();
+        assert_eq!(post_as(&base, Some("evil.example"), None, None).await, 403, "a rebound name");
+        assert_eq!(post_as(&base, None, Some("https://evil.example"), None).await, 403, "another site's page");
+        assert_eq!(post_as(&base, None, Some("null"), None).await, 403, "a sandboxed page");
+        assert_eq!(post_as(&base, Some(&format!("localhost:{port}")), None, None).await, 200);
+        assert_eq!(post_as(&base, None, Some("http://localhost:3000"), None).await, 200, "a local page");
+
+        let guarded = start(Some("t0k")).await;
+        assert_eq!(post_as(&guarded, Some("search.lan"), None, Some("t0k")).await, 200, "the token is the guard");
+    }
+
+    #[tokio::test]
+    async fn every_refusal_is_json() {
+        let base = start(None).await;
+        let reply = reqwest::get(format!("{base}/search")).await.unwrap();
+        assert_eq!(reply.status().as_u16(), 405);
+        assert!(reply.json::<Value>().await.unwrap()["error"].is_string());
+        let big = json!({"query": "x".repeat(MAX_BODY)});
+        let (status, body) = post(&base, "/search", big, None).await;
+        assert_eq!(status, 413);
+        assert!(body["error"].is_string());
+    }
+
+    #[test]
+    fn local_hosts_are_this_machine_only() {
+        for host in ["localhost", "localhost:8765", "LOCALHOST", "127.0.0.1:8765", "127.1.2.3", "[::1]:8765", "[::1]"] {
+            assert!(is_local_host(host), "{host}");
+        }
+        for host in ["evil.example", "localhost.evil.example", "10.0.0.20:8765", "[::2]", "0.0.0.0", ""] {
+            assert!(!is_local_host(host), "{host}");
+        }
     }
 
     #[test]

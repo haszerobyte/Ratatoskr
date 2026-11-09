@@ -275,14 +275,22 @@ can stand in wherever such a server is configured, including another
 ratatoskr's `SEARCH_API_URL`.
 
 Errors are JSON `{"error": …}`: 400 for a bad request, 401 without the token,
-403 for a URL on a private network (with `"kind": "blocked"`), 502 when every
-engine or the site failed.
+403 for a URL on a private network (with `"kind": "blocked"`) or a request
+refused as below, 413 for a body over 64 KB, 502 when every engine or the site
+failed.
 
 **Only loopback by default.** `--listen 0.0.0.0:8765` (any address but
 loopback) refuses to start without `RATATOSKR_API_TOKEN`; clients then send
 `Authorization: Bearer <token>`. Fetches can never reach the local network
 either way, but an open search relay would hand your address and its
 standing with the search engines to whoever finds it.
+
+**Not for web pages.** Without a token, only requests addressed to
+`localhost`, `127.0.0.1` or `[::1]` and not sent by another site's web page are
+served: a page open in your browser could otherwise make the server search
+and fetch for it, and read the answers by pointing its own name at 127.0.0.1
+(DNS rebinding). To call the server under another name, from a container
+for instance, set a token.
 
 In your own program: `ratatoskr::http::serve(Arc::new(rt), listener, token)`,
 or mount `ratatoskr::http::router(...)` in an axum app.
