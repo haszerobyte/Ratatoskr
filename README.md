@@ -13,6 +13,11 @@
   <a href="https://crates.io/crates/ratatoskr-web"><img src="https://img.shields.io/crates/v/ratatoskr-web" alt="crates.io"></a>
   <a href="https://docs.rs/ratatoskr-web"><img src="https://img.shields.io/docsrs/ratatoskr-web" alt="docs.rs"></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License: Apache-2.0"></a>
+  <a href="https://m8ven.ai/mcp/haszerobyte/ratatoskr?s=readme"><img src="https://m8ven.ai/badge/mcp/haszerobyte/ratatoskr" alt="M8ven Score"></a>
+</p>
+
+<p align="center">
+  <a href="https://mcprush.com/to/ratatoskr-mcp?ref=badge"><img src="https://mcprush.com/badge/ratatoskr-mcp/card.svg" alt="Ratatoskr MCP server"></a>
 </p>
 
 Ratatoskr gives an agent two tools:
