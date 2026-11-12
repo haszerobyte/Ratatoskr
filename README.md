@@ -17,10 +17,7 @@
   <a href="https://github.com/haszerobyte/Ratatoskr/pkgs/container/ratatoskr"><img src="https://img.shields.io/badge/container-ghcr.io%2Fhaszerobyte%2Fratatoskr-blue?logo=docker&logoColor=white" alt="Container image"></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License: Apache-2.0"></a>
   <a href="https://m8ven.ai/mcp/haszerobyte/ratatoskr?s=readme"><img src="https://m8ven.ai/badge/mcp/haszerobyte/ratatoskr" alt="M8ven Score"></a>
-</p>
-
-<p align="center">
-  <a href="https://mcprush.com/to/ratatoskr-mcp?ref=badge"><img src="https://mcprush.com/badge/ratatoskr-mcp/card.svg" alt="Ratatoskr MCP server"></a>
+  <a href="https://mcprush.com/to/ratatoskr-mcp?ref=badge"><img src="https://mcprush.com/badge/ratatoskr-mcp/score.svg" alt="Ratatoskr MCP on mcprush"></a>
 </p>
 
 Ratatoskr gives an agent two tools:
