@@ -217,7 +217,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         env:
           # The action uploads a build record as a run artifact by default;
           # the release's artifacts are its binaries only.
